@@ -1,0 +1,449 @@
+{
+  "tools": [
+    {
+      "name": "list_all_devices",
+      "description": "Get a list of all Eufy Security devices (cameras, doorbells, sensors, etc.) in the account",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/devices"
+      },
+      "parameters": [],
+      "returns": {
+        "type": "array",
+        "description": "List of devices with their details",
+        "example": [
+          {
+            "serialNumber": "T8600P...",
+            "name": "Front Door Camera",
+            "model": "T8600",
+            "type": "Camera3Pro",
+            "enabled": true
+          }
+        ]
+      },
+      "use_cases": [
+        "User asks 'What cameras do I have?'",
+        "User asks 'Show me all my Eufy devices'",
+        "User wants to see device status"
+      ]
+    },
+    {
+      "name": "get_device_details",
+      "description": "Get detailed information about a specific Eufy Security device by its serial number",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/devices/{serialNumber}"
+      },
+      "parameters": [
+        {
+          "name": "serialNumber",
+          "type": "string",
+          "required": true,
+          "description": "The unique serial number of the device",
+          "location": "path"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Detailed device information"
+      },
+      "use_cases": [
+        "User asks 'Tell me about my front door camera'",
+        "User asks 'What's the status of device T8600...'",
+        "Getting specific device information"
+      ]
+    },
+    {
+      "name": "refresh_devices",
+      "description": "Refresh the device list from Eufy cloud to get the latest device information and status",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/devices/refresh"
+      },
+      "parameters": [],
+      "returns": {
+        "type": "object",
+        "description": "Refresh status with device and station counts"
+      },
+      "use_cases": [
+        "User asks 'Refresh my device list'",
+        "User says 'I just added a new camera, can you see it?'",
+        "Periodic updates needed"
+      ]
+    },
+    {
+      "name": "list_all_stations",
+      "description": "Get a list of all Eufy Security stations/hubs (HomeBase) that manage the devices",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/stations"
+      },
+      "parameters": [],
+      "returns": {
+        "type": "array",
+        "description": "List of stations with their details and connected devices"
+      },
+      "use_cases": [
+        "User asks 'What stations do I have?'",
+        "User asks 'Show me my HomeBase'",
+        "Getting station information"
+      ]
+    },
+    {
+      "name": "get_station_details",
+      "description": "Get detailed information about a specific station including its guard mode, connected devices, and network status",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/stations/{serialNumber}"
+      },
+      "parameters": [
+        {
+          "name": "serialNumber",
+          "type": "string",
+          "required": true,
+          "description": "The unique serial number of the station",
+          "location": "path"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Detailed station information including guard mode and devices"
+      },
+      "use_cases": [
+        "User asks 'What's my security system status?'",
+        "User asks 'What mode is my HomeBase in?'",
+        "Checking station guard mode"
+      ]
+    },
+    {
+      "name": "set_guard_mode",
+      "description": "Change the security guard mode for a station. Modes: Away (full security), Home (partial security), Disarmed (security off), Schedule (automatic), Custom1/2/3",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/stations/{serialNumber}/guard-mode"
+      },
+      "parameters": [
+        {
+          "name": "serialNumber",
+          "type": "string",
+          "required": true,
+          "description": "The station serial number",
+          "location": "path"
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "required": true,
+          "description": "Guard mode to set",
+          "location": "body",
+          "enum": ["Away", "Home", "Disarmed", "Schedule", "Custom1", "Custom2", "Custom3"],
+          "default": "Away"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Confirmation of guard mode change"
+      },
+      "use_cases": [
+        "User says 'Arm my security system'",
+        "User says 'I'm leaving, set to away mode'",
+        "User says 'Disarm my alarm'",
+        "User says 'Switch to home mode'",
+        "Automating security based on location/time"
+      ],
+      "examples": [
+        {
+          "user_request": "Arm my security system",
+          "parameters": {
+            "serialNumber": "T8030P...",
+            "mode": "Away"
+          }
+        },
+        {
+          "user_request": "I'm home, switch to home mode",
+          "parameters": {
+            "serialNumber": "T8030P...",
+            "mode": "Home"
+          }
+        },
+        {
+          "user_request": "Disarm the alarm",
+          "parameters": {
+            "serialNumber": "T8030P...",
+            "mode": "Disarmed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "start_livestream",
+      "description": "Start a live video stream from a camera or doorbell device. The stream will be available through the device's connection.",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/livestream/start"
+      },
+      "parameters": [
+        {
+          "name": "deviceSerial",
+          "type": "string",
+          "required": true,
+          "description": "The serial number of the camera/doorbell device",
+          "location": "query"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Livestream start confirmation"
+      },
+      "use_cases": [
+        "User says 'Show me my front door camera'",
+        "User says 'Start livestream from camera X'",
+        "User wants to view live video",
+        "Checking what's happening at a location"
+      ],
+      "notes": [
+        "Livestream events will be sent via SignalR hub",
+        "Stream metadata includes video codec, resolution, and FPS"
+      ]
+    },
+    {
+      "name": "stop_livestream",
+      "description": "Stop an active live video stream from a camera or doorbell device",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/livestream/stop"
+      },
+      "parameters": [
+        {
+          "name": "deviceSerial",
+          "type": "string",
+          "required": true,
+          "description": "The serial number of the camera/doorbell device",
+          "location": "query"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Livestream stop confirmation"
+      },
+      "use_cases": [
+        "User says 'Stop the camera stream'",
+        "User says 'Close the livestream'",
+        "Ending active video viewing"
+      ]
+    },
+    {
+      "name": "connect_to_station",
+      "description": "Establish a P2P (peer-to-peer) connection to a station for direct local or remote communication",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/stations/{serialNumber}/connect"
+      },
+      "parameters": [
+        {
+          "name": "serialNumber",
+          "type": "string",
+          "required": true,
+          "description": "The station serial number",
+          "location": "path"
+        }
+      ],
+      "returns": {
+        "type": "object",
+               "description": "Connection status"
+      },
+      "use_cases": [
+        "Establishing connection before starting livestream",
+        "Ensuring station is reachable",
+        "Troubleshooting connectivity"
+      ],
+      "notes": [
+        "Usually called automatically when needed",
+        "Required before livestream or some device commands"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "DeviceAdded",
+      "description": "Fired when a new device is discovered or added to the account",
+      "payload": {
+        "serialNumber": "string",
+        "name": "string",
+        "type": "string",
+        "model": "string"
+      },
+      "use_cases": [
+        "Notify user when new device is detected",
+        "Trigger automation when device is added",
+        "Update device inventory"
+      ]
+    },
+    {
+      "name": "StationAdded",
+      "description": "Fired when a new station/hub is discovered or added",
+      "payload": {
+        "serialNumber": "string",
+        "name": "string",
+        "type": "string",
+        "model": "string"
+      },
+      "use_cases": [
+        "Notify when new station is set up",
+        "Track infrastructure changes"
+      ]
+    },
+    {
+      "name": "PushNotification",
+      "description": "Real-time notification from Eufy devices for motion, person detection, doorbell rings, etc.",
+      "payload": {
+        "type": "string",
+        "deviceSerial": "string",
+        "timestamp": "datetime",
+        "title": "string",
+        "message": "string",
+        "personDetected": "boolean",
+        "motionDetected": "boolean",
+        "doorbellRing": "boolean"
+      },
+      "use_cases": [
+        "Alert user 'Someone is at your front door'",
+        "Alert user 'Motion detected in backyard'",
+        "Alert user 'Person detected at garage'",
+        "Trigger automations based on events",
+        "Log security events"
+      ],
+      "examples": [
+        {
+          "scenario": "Doorbell pressed",
+          "response": "Someone is ringing your front doorbell"
+        },
+        {
+          "scenario": "Motion detected",
+          "response": "Motion detected by Front Yard Camera"
+        },
+        {
+          "scenario": "Person detected",
+          "response": "Person detected at Back Door Camera"
+        }
+      ]
+    },
+    {
+      "name": "LivestreamStarted",
+      "description": "Fired when a livestream begins from a device",
+      "payload": {
+        "deviceSerial": "string",
+        "deviceName": "string",
+        "metadata": {
+          "videoCodec": "string",
+          "audioCodec": "string",
+          "videoWidth": "number",
+          "videoHeight": "number",
+          "videoFps": "number"
+        }
+      },
+      "use_cases": [
+        "Confirm livestream started",
+        "Display stream information to user",
+        "Log viewing sessions"
+      ]
+    },
+    {
+      "name": "LivestreamStopped",
+      "description": "Fired when a livestream ends",
+      "payload": {
+        "deviceSerial": "string",
+        "deviceName": "string"
+      },
+      "use_cases": [
+        "Confirm livestream ended",
+        "Clean up resources",
+        "Log session end"
+      ]
+    }
+  ],
+  "common_workflows": [
+    {
+      "name": "check_security_status",
+      "description": "Check overall security system status",
+      "steps": [
+        {
+          "tool": "list_all_stations",
+          "description": "Get all stations and their guard modes"
+        },
+        {
+          "tool": "list_all_devices",
+          "description": "Get all devices and their status"
+        }
+      ],
+      "user_requests": [
+        "What's my security status?",
+        "Is my house secure?",
+        "Are my cameras online?"
+      ]
+    },
+    {
+      "name": "arm_system_when_leaving",
+      "description": "Arm security system when leaving home",
+      "steps": [
+        {
+          "tool": "list_all_stations",
+          "description": "Get station serial numbers"
+        },
+        {
+          "tool": "set_guard_mode",
+          "parameters": {
+            "mode": "Away"
+          },
+          "description": "Set each station to Away mode"
+        }
+      ],
+      "user_requests": [
+        "I'm leaving home",
+        "Arm my security",
+        "Lock everything down"
+      ]
+    },
+    {
+      "name": "disarm_when_arriving",
+      "description": "Disarm security system when arriving home",
+      "steps": [
+        {
+          "tool": "list_all_stations",
+          "description": "Get station serial numbers"
+        },
+        {
+          "tool": "set_guard_mode",
+          "parameters": {
+            "mode": "Home"
+          },
+          "description": "Set each station to Home mode"
+        }
+      ],
+      "user_requests": [
+        "I'm home",
+        "Disarm security",
+        "Switch to home mode"
+      ]
+    },
+    {
+      "name": "view_specific_camera",
+      "description": "Start livestream from a specific camera",
+      "steps": [
+        {
+          "tool": "list_all_devices",
+          "description": "Find camera by name or location"
+        },
+        {
+          "tool": "start_livestream",
+          "description": "Start stream from the camera"
+        }
+      ],
+      "user_requests": [
+        "Show me my front door",
+        "Let me see the backyard camera",
+        "Check the garage camera"
+      ]
+    }
+  ]
+}

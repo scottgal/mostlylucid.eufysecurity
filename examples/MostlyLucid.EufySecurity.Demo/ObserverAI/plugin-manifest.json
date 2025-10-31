@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "name": "eufy-security",
+  "display_name": "Eufy Security",
+  "description": "Control and monitor Eufy Security devices including cameras, doorbells, locks, and sensors",
+  "version": "1.0.0",
+  "author": "MostlyLucid.EufySecurity.NET",
+  "homepage": "https://github.com/eufy-security/EufySecurity.NET",
+  "api": {
+    "type": "openapi",
+    "url": "${EUFY_API_BASE_URL}/swagger/v1/swagger.json",
+    "base_url": "${EUFY_API_BASE_URL}"
+  },
+  "auth": {
+    "type": "none",
+    "description": "Authentication is handled by the EufySecurity service itself via Eufy cloud credentials"
+  },
+  "real_time": {
+    "type": "signalr",
+    "url": "${EUFY_API_BASE_URL}/hubs/events",
+    "events": [
+      "DeviceAdded",
+      "StationAdded",
+      "LivestreamStarted",
+      "LivestreamStopped",
+      "PushNotification"
+    ]
+  },
+  "health_check": {
+    "url": "${EUFY_API_BASE_URL}/health",
+    "interval_seconds": 60
+  },
+  "logo_url": "https://us.eufy.com/cdn/shop/files/eufy-security-logo.png",
+  "categories": [
+    "security",
+    "smart-home",
+    "iot",
+    "cameras",
+    "monitoring"
+  ]
+}

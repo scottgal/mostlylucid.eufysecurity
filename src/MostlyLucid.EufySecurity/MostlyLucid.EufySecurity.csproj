@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MostlyLucid.EufySecurity</PackageId>
+    <Authors>MostlyLucid</Authors>
+    <Company>MostlyLucid</Company>
+    <Product>MostlyLucid.EufySecurity</Product>
+    <Description>A .NET client library for controlling Eufy Security devices by connecting to Eufy cloud servers and local/remote stations over P2P. Supports cameras, doorbells, locks, sensors, and more.</Description>
+    <Copyright>Public Domain</Copyright>
+    <PackageLicenseFile>UNLICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/scottgal/mostlylucidweb</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/scottgal/mostlylucidweb</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>eufy;security;camera;doorbell;homeautomation;iot;smarthome;p2p;mostlylucid</PackageTags>
+    <Version>1.0.0</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\UNLICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HTTP Client -->
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.0" />
+
+    <!-- Cryptography -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+
+    <!-- Protocol Buffers -->
+    <PackageReference Include="Google.Protobuf" Version="3.27.0" />
+
+    <!-- MQTT -->
+    <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+
+    <!-- JSON -->
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+
+    <!-- Reactive Extensions for Events -->
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+
+    <!-- Logging -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
+
+    <!-- Collections -->
+    <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+
+    <!-- Async utilities -->
+    <PackageReference Include="Nito.AsyncEx" Version="5.1.2" />
+  </ItemGroup>
+
+</Project>
