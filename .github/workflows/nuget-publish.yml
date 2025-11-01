@@ -59,3 +59,4 @@ jobs:
       with:
         name: nuget-package-${{ steps.get_version.outputs.version }}
         path: ./artifacts/*.nupkg
+ 
