@@ -5,7 +5,8 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllersWithViews();
+builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
 
 // Configure Swagger/OpenAPI
@@ -87,14 +88,17 @@ app.UseAuthorization();
 // Map controllers
 app.MapControllers();
 
+// Map Razor Pages
+app.MapRazorPages();
+
 // Map SignalR hub
 app.MapHub<EufyEventsHub>("/hubs/events");
 
 // Map health checks
 app.MapHealthChecks("/health");
 
-// Welcome endpoint
-app.MapGet("/", () => Results.Redirect("/swagger"));
+// Welcome endpoint - redirect to login
+app.MapGet("/", () => Results.Redirect("/Auth/Login"));
 
 app.Logger.LogInformation("EufySecurity.NET Demo API starting...");
 app.Logger.LogInformation("Swagger UI available at: https://localhost:{Port}/",

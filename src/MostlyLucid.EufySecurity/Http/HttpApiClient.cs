@@ -36,7 +36,7 @@ public class CaptchaRequestEventArgs : EventArgs
 /// </summary>
 public class HttpApiClient : IDisposable
 {
-    private const string ApiDomainBase = "https://mysecurity.eufylife.com/api";
+    private const string ApiDomainBase = "https://security-app.eufylife.com/api";
     private const int CodeNeedVerifyCode = 26052;
     private const int CodeWhateverError = 0;
     private const string DefaultServerPublicKey = "04c5c00c4f8d1197cc7c3167c52bf7acb054d722f0ef08dcd7e0883236e0d72a3868d9750cb47fa4619248f3d83f0f662671dadc6e2d31c2f41db0161651c7c076";
@@ -200,7 +200,7 @@ public class HttpApiClient : IDisposable
             }
 
             var response = await _httpClient.PostAsJsonAsync(
-                "/v2/passport/login_sec",
+                "/v2/passport/login",
                 loginData,
                 cancellationToken);
 

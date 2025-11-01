@@ -1,49 +1,72 @@
-# MostlyLucid.EufySecurity Demo API
+# MostlyLucid.EufySecurity Demo Application
 
-This is a comprehensive ASP.NET Core Web API demo project that showcases all the functionality of the MostlyLucid.EufySecurity library.
+A modern ASP.NET Core web application showcasing the MostlyLucid.EufySecurity library with a beautiful UI and complete 2FA flow.
 
 ## Features
 
-- ✅ **REST API** - Full CRUD operations for devices and stations
-- ✅ **SignalR Hub** - Real-time event streaming
-- ✅ **Swagger UI** - Interactive API documentation
-- ✅ **Health Checks** - Monitor service status
-- ✅ **Hosted Service** - Background EufySecurity client management
-- ✅ **CORS Enabled** - Ready for frontend integration
-- ✅ **Dependency Injection** - Best practices ASP.NET Core architecture
+- 🎨 **Beautiful UI** - Tailwind CSS + DaisyUI themed interface
+- 🔐 **2FA Authentication** - Full two-factor authentication flow with email verification
+- 🚀 **Interactive Login** - Alpine.js powered reactive forms
+- 📡 **REST API** - Full CRUD operations for devices and stations
+- 🔄 **SignalR Hub** - Real-time event streaming
+- 📖 **Swagger UI** - Interactive API documentation
+- ❤️ **Health Checks** - Monitor service status
+- 🏗️ **Modern C#** - Primary constructors, nullable reference types
+- 🎯 **CORS Enabled** - Ready for frontend integration
 
 ## Quick Start
 
-### 1. Configure Credentials
-
-Edit `appsettings.json` and add your Eufy credentials:
-
-```json
-{
-  "Eufy": {
-    "Username": "your-email@example.com",
-    "Password": "your-password",
-    "Country": "US",
-    "Language": "en",
-    "PollingIntervalMinutes": 10
-  }
-}
-```
-
-**Note:** For production, use User Secrets or environment variables instead of hardcoding credentials.
-
-### 2. Run the Application
+### 1. Run the Application
 
 ```bash
 cd examples/MostlyLucid.EufySecurity.Demo
 dotnet run
 ```
 
-### 3. Access the API
+### 2. Open Your Browser
 
-- **Swagger UI**: https://localhost:5001/ (or http://localhost:5000/)
+Navigate to `https://localhost:5001` (or `http://localhost:5000`)
+
+You'll be automatically redirected to the beautiful login page!
+
+### 3. Login with 2FA
+
+**Step 1: Enter Your Credentials**
+- Email address (your Eufy account email)
+- Password (your Eufy account password)
+- Country (must match your Eufy app - e.g., UK, US, DE)
+- Language (e.g., en, de, fr)
+
+**Step 2: Verify Your Email (if 2FA is enabled)**
+- Check your email for a 6-digit verification code
+- Enter the code on the verification page
+- The code expires in 5 minutes
+- You can request a new code if needed
+
+**Step 3: You're In!**
+- After successful authentication, you'll be redirected to the Swagger API documentation
+- Your Eufy devices are now accessible via the API
+
+### 4. Access Points
+
+- **Login Page**: https://localhost:5001/Auth/Login
+- **Swagger UI**: https://localhost:5001/swagger
 - **SignalR Hub**: https://localhost:5001/hubs/events
 - **Health Check**: https://localhost:5001/health
+
+## Configuration (Optional)
+
+You can optionally pre-configure credentials in `appsettings.json`, but the UI login is the recommended approach:
+
+```json
+{
+  "Eufy": {
+    "PollingIntervalMinutes": 10
+  }
+}
+```
+
+**Note:** Never commit credentials to source control. The interactive login is more secure.
 
 ## API Endpoints
 

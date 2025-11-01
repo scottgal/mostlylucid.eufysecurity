@@ -2,6 +2,7 @@ using MostlyLucid.EufySecurity;
 using MostlyLucid.EufySecurity.Common;
 using MostlyLucid.EufySecurity.Demo.Hubs;
 using MostlyLucid.EufySecurity.Events;
+using MostlyLucid.EufySecurity.Http;
 using Microsoft.AspNetCore.SignalR;
 
 namespace MostlyLucid.EufySecurity.Demo.Services;
@@ -9,22 +10,15 @@ namespace MostlyLucid.EufySecurity.Demo.Services;
 /// <summary>
 /// Background service that manages the EufySecurity client lifecycle
 /// </summary>
-public class EufySecurityHostedService : IHostedService, IDisposable
+public class EufySecurityHostedService(
+    ILogger<EufySecurityHostedService> logger,
+    IConfiguration configuration,
+    IHubContext<EufyEventsHub> hubContext) : IHostedService, IDisposable
 {
-    private readonly ILogger<EufySecurityHostedService> _logger;
-    private readonly IConfiguration _configuration;
-    private readonly IHubContext<EufyEventsHub> _hubContext;
+    private readonly ILogger<EufySecurityHostedService> _logger = logger;
+    private readonly IConfiguration _configuration = configuration;
+    private readonly IHubContext<EufyEventsHub> _hubContext = hubContext;
     private EufySecurityClient? _client;
-
-    public EufySecurityHostedService(
-        ILogger<EufySecurityHostedService> logger,
-        IConfiguration configuration,
-        IHubContext<EufyEventsHub> hubContext)
-    {
-        _logger = logger;
-        _configuration = configuration;
-        _hubContext = hubContext;
-    }
 
     /// <summary>
     /// Gets the current EufySecurity client instance
@@ -33,22 +27,18 @@ public class EufySecurityHostedService : IHostedService, IDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        _logger.LogInformation("EufySecurity hosted service initialized (not auto-connecting).");
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Manually connect to Eufy cloud with credentials
+    /// </summary>
+    public async Task<AuthenticationResult> ConnectAsync(string username, string password, string? verifyCode, string country, string language, CancellationToken cancellationToken = default)
+    {
         try
         {
-            _logger.LogInformation("Starting EufySecurity hosted service...");
-
-            // Load configuration
-            var username = _configuration["Eufy:Username"];
-            var password = _configuration["Eufy:Password"];
-            var verifyCode = _configuration["Eufy:VerifyCode"]; // Optional 2FA code
-            var country = _configuration["Eufy:Country"] ?? "US";
-            var language = _configuration["Eufy:Language"] ?? "en";
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-            {
-                _logger.LogWarning("Eufy credentials not configured. Service will not connect.");
-                return;
-            }
+            _logger.LogInformation("Connecting to Eufy Security cloud...");
 
             var config = new EufySecurityConfig
             {
@@ -68,27 +58,28 @@ public class EufySecurityHostedService : IHostedService, IDisposable
             // Connect to Eufy cloud
             var authResult = await _client.ConnectAsync(verifyCode, cancellationToken);
 
-            if (!authResult.Success)
+            if (authResult.Success)
             {
-                if (authResult.RequiresTwoFactor)
-                {
-                    _logger.LogWarning("Two-factor authentication required. Check your email for verification code.");
-                    _logger.LogWarning("Add the verification code to appsettings.json as 'Eufy:VerifyCode' and restart the application.");
-                }
-                else
-                {
-                    throw new Exception($"Authentication failed: {authResult.Message}");
-                }
+                _logger.LogInformation("EufySecurity client connected successfully");
             }
 
-            _logger.LogInformation("EufySecurity hosted service started successfully");
+            return authResult;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start EufySecurity hosted service");
-            throw;
+            _logger.LogError(ex, "Failed to connect EufySecurity client");
+            return new AuthenticationResult
+            {
+                Success = false,
+                Message = $"Exception: {ex.Message}"
+            };
         }
     }
+
+    /// <summary>
+    /// Check if client is connected
+    /// </summary>
+    public bool IsConnected => _client != null;
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {

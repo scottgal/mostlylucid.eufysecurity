@@ -1,0 +1,237 @@
+@page
+@model MostlyLucid.EufySecurity.Demo.Pages.Auth.VerifyModel
+@{
+    ViewData["Title"] = "Two-Factor Authentication";
+}
+
+<div class="flex items-center justify-center min-h-[calc(100vh-300px)]">
+    <div class="card w-full max-w-md bg-base-100 shadow-2xl"
+         x-data="{
+             loading: false,
+             verifyCode: '',
+             error: '',
+             success: '',
+             resending: false,
+             countdown: 0,
+             init() {
+                 // Check if we have auth data
+                 const username = sessionStorage.getItem('auth_username');
+                 if (!username) {
+                     window.location.href = '/Auth/Login';
+                 }
+             }
+         }"
+         x-init="init()">
+
+        <div class="card-body">
+            <!-- Header -->
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
+                    <svg class="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h2 class="card-title text-3xl font-bold justify-center">
+                    Check Your Email
+                </h2>
+                <p class="text-base-content/70 mt-2">
+                    We've sent a 6-digit verification code to your email address
+                </p>
+            </div>
+
+            <!-- Alert messages -->
+            <div x-show="error" x-cloak class="alert alert-error mb-4" role="alert">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span x-text="error"></span>
+            </div>
+
+            <div x-show="success" x-cloak class="alert alert-success mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span x-text="success"></span>
+            </div>
+
+            <form @@submit.prevent="submitVerify">
+                <!-- Verification Code Input -->
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text font-semibold">Verification Code</span>
+                        <span class="label-text-alt text-xs">
+                            <span class="countdown" x-show="countdown > 0">
+                                <span x-text="countdown"></span>s
+                            </span>
+                        </span>
+                    </label>
+                    <input type="text"
+                           x-model="verifyCode"
+                           placeholder="000000"
+                           class="input input-bordered input-lg w-full text-center text-2xl tracking-widest font-mono"
+                           maxlength="6"
+                           pattern="[0-9]{6}"
+                           required
+                           :disabled="loading"
+                           autofocus
+                           @@input="verifyCode = verifyCode.replace(/[^0-9]/g, '')" />
+                    <label class="label">
+                        <span class="label-text-alt text-xs opacity-70">Enter the 6-digit code from your email</span>
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="form-control mt-6">
+                    <button type="submit"
+                            class="btn btn-primary btn-lg w-full"
+                            :class="{ 'loading': loading }"
+                            :disabled="loading || verifyCode.length !== 6">
+                        <span x-show="!loading">
+                            <svg class="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Verify & Sign In
+                        </span>
+                        <span x-show="loading" class="loading loading-spinner"></span>
+                        <span x-show="loading" x-cloak>Verifying...</span>
+                    </button>
+                </div>
+
+                <!-- Resend Code -->
+                <div class="text-center mt-4">
+                    <button type="button"
+                            @@click="resendCode"
+                            class="btn btn-ghost btn-sm"
+                            :disabled="resending || countdown > 0">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span x-show="!resending">Didn't receive code? Resend</span>
+                        <span x-show="resending" x-cloak class="loading loading-spinner loading-xs"></span>
+                    </button>
+                </div>
+
+                <!-- Back to Login -->
+                <div class="text-center mt-2">
+                    <a href="/Auth/Login" class="btn btn-ghost btn-sm">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                        </svg>
+                        Back to Login
+                    </a>
+                </div>
+            </form>
+
+            <!-- Info box -->
+            <div class="alert alert-info mt-6">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div class="text-sm">
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Code expires in 5 minutes</li>
+                        <li>Check your spam folder if you don't see it</li>
+                        <li>You can request a new code if needed</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function submitVerify() {
+            this.error = '';
+            this.success = '';
+            this.loading = true;
+
+            const username = sessionStorage.getItem('auth_username');
+            const password = sessionStorage.getItem('auth_password');
+            const country = sessionStorage.getItem('auth_country') || 'US';
+            const language = sessionStorage.getItem('auth_language') || 'en';
+
+            fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password,
+                    verifyCode: this.verifyCode,
+                    country: country,
+                    language: language
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.loading = false;
+
+                if (data.success) {
+                    this.success = 'Successfully verified! Connecting to Eufy Security...';
+                    // Clear session storage
+                    sessionStorage.removeItem('auth_username');
+                    sessionStorage.removeItem('auth_password');
+                    sessionStorage.removeItem('auth_country');
+                    sessionStorage.removeItem('auth_language');
+
+                    setTimeout(() => {
+                        window.location.href = '/swagger';
+                    }, 1500);
+                } else {
+                    this.error = data.message || 'Verification failed. Please check your code and try again.';
+                }
+            })
+            .catch(error => {
+                this.loading = false;
+                this.error = 'Network error: ' + error.message;
+                console.error('Verification error:', error);
+            });
+        }
+
+        function resendCode() {
+            this.resending = true;
+            this.error = '';
+
+            const username = sessionStorage.getItem('auth_username');
+            const password = sessionStorage.getItem('auth_password');
+            const country = sessionStorage.getItem('auth_country') || 'US';
+            const language = sessionStorage.getItem('auth_language') || 'en';
+
+            fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password,
+                    country: country,
+                    language: language
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.resending = false;
+
+                if (data.requiresTwoFactor) {
+                    this.success = 'New verification code sent! Check your email.';
+                    this.countdown = 60;
+
+                    // Start countdown
+                    const interval = setInterval(() => {
+                        this.countdown--;
+                        if (this.countdown <= 0) {
+                            clearInterval(interval);
+                        }
+                    }, 1000);
+
+                    // Clear success message after 5 seconds
+                    setTimeout(() => { this.success = ''; }, 5000);
+                } else {
+                    this.error = 'Failed to resend code. Please try again.';
+                }
+            })
+            .catch(error => {
+                this.resending = false;
+                this.error = 'Network error: ' + error.message;
+                console.error('Resend error:', error);
+            });
+        }
+    </script>
+}
