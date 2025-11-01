@@ -13,9 +13,35 @@ public class EufySecurityConfig
     public required string Username { get; init; }
 
     /// <summary>
-    /// Eufy account password
+    /// Eufy account password or app password (PIN)
+    /// Backward-compatible: if you already use this for the Eufy-generated PIN, you can keep using it.
     /// </summary>
-    public required string Password { get; init; }
+    public string? Password { get; init; }
+
+    /// <summary>
+    /// Optional: Eufy app-specific password (generated PIN). Alias for clarity.
+    /// </summary>
+    public string? AppPassword { get; init; }
+
+    /// <summary>
+    /// Optional: Eufy generated PIN (alias). Same as AppPassword.
+    /// </summary>
+    public string? Pin { get; init; }
+
+    /// <summary>
+    /// Returns the password value that will be used for authentication.
+    /// Resolution order: Password -> AppPassword -> Pin. Throws if none are provided.
+    /// </summary>
+    public string EffectivePassword
+    {
+        get
+        {
+            var value = Password ?? AppPassword ?? Pin;
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentException("You must provide either Password, AppPassword, or Pin in EufySecurityConfig.");
+            return value;
+        }
+    }
 
     /// <summary>
     /// Country code (must match Eufy app setting)

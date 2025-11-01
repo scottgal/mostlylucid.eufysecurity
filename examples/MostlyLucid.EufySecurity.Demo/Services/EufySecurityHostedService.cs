@@ -40,6 +40,7 @@ public class EufySecurityHostedService : IHostedService, IDisposable
             // Load configuration
             var username = _configuration["Eufy:Username"];
             var password = _configuration["Eufy:Password"];
+            var verifyCode = _configuration["Eufy:VerifyCode"]; // Optional 2FA code
             var country = _configuration["Eufy:Country"] ?? "US";
             var language = _configuration["Eufy:Language"] ?? "en";
 
@@ -65,7 +66,20 @@ public class EufySecurityHostedService : IHostedService, IDisposable
             SubscribeToEvents();
 
             // Connect to Eufy cloud
-            await _client.ConnectAsync(cancellationToken);
+            var authResult = await _client.ConnectAsync(verifyCode, cancellationToken);
+
+            if (!authResult.Success)
+            {
+                if (authResult.RequiresTwoFactor)
+                {
+                    _logger.LogWarning("Two-factor authentication required. Check your email for verification code.");
+                    _logger.LogWarning("Add the verification code to appsettings.json as 'Eufy:VerifyCode' and restart the application.");
+                }
+                else
+                {
+                    throw new Exception($"Authentication failed: {authResult.Message}");
+                }
+            }
 
             _logger.LogInformation("EufySecurity hosted service started successfully");
         }

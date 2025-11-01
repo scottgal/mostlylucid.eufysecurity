@@ -54,9 +54,10 @@ public class EufySecurityClient : IDisposable
         // Initialize subsystems
         _httpApi = new HttpApiClient(
             config.Username,
-            config.Password,
+            config.EffectivePassword,
             config.Country,
             config.Language,
+            config.TrustedDeviceName,
             _logger);
 
         _p2pClient = new P2PClient(_logger);
@@ -74,17 +75,26 @@ public class EufySecurityClient : IDisposable
     /// <summary>
     /// Connect to Eufy cloud and initialize devices
     /// </summary>
-    public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    /// <param name="verifyCode">Optional 2FA verification code if previously required</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Authentication result indicating success or if 2FA is required</returns>
+    public async Task<AuthenticationResult> ConnectAsync(string? verifyCode = null, CancellationToken cancellationToken = default)
     {
         try
         {
             _logger?.LogInformation("Connecting to Eufy Security cloud...");
 
             // Authenticate with cloud API
-            var authenticated = await _httpApi.AuthenticateAsync(cancellationToken);
-            if (!authenticated)
+            var result = await _httpApi.AuthenticateAsync(verifyCode, null, cancellationToken);
+            if (!result.Success)
             {
-                throw new AuthenticationException("Failed to authenticate with Eufy cloud");
+                if (result.RequiresTwoFactor)
+                {
+                    _logger?.LogInformation("Two-factor authentication required. Call ConnectAsync again with the verification code from your email.");
+                    return result;
+                }
+
+                throw new AuthenticationException(result.Message ?? "Failed to authenticate with Eufy cloud");
             }
 
             // Load devices and stations
@@ -109,6 +119,8 @@ public class EufySecurityClient : IDisposable
 
             _logger?.LogInformation("Connected to Eufy Security cloud with {StationCount} stations and {DeviceCount} devices",
                 _stations.Count, _devices.Count);
+
+            return result;
         }
         catch (Exception ex)
         {

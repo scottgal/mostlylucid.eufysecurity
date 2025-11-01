@@ -1,0 +1,321 @@
+# Two-Factor Authentication (2FA) in EufySecurity.NET
+
+## How Eufy's 2FA Works
+
+Eufy Security uses email-based two-factor authentication to secure API access. Here's the authentication flow:
+
+### Normal Authentication (without 2FA)
+1. Client sends username and encrypted password
+2. Server validates credentials
+3. Server returns authentication token
+4. Client is authenticated
+
+### Authentication with 2FA
+1. Client sends username and encrypted password
+2. Server detects 2FA is required for this account
+3. Server returns code `26052` (2FA required)
+4. Server automatically sends a 6-digit verification code to your email
+5. User retrieves code from email (valid for 5 minutes)
+6. Client resends authentication request **with the verification code**
+7. Server validates code and returns authentication token
+8. Client is authenticated
+
+## Important Notes
+
+- **Verification codes expire after 5 minutes**
+- **Old codes remain valid** if you request multiple codes within the 5-minute window
+- Verification codes are **6 digits** sent via email
+- After successful 2FA, the device can be marked as "trusted" to avoid future prompts
+
+## Using 2FA with EufySecurity.NET
+
+### Method 1: Manual Two-Step Authentication
+
+This is the recommended approach for interactive applications:
+
+```csharp
+using EufySecurity;
+using EufySecurity.Common;
+
+var config = new EufySecurityConfig
+{
+    Username = "your-email@example.com",
+    Password = "your-password", // Your actual account password
+    Country = "US"
+};
+
+var client = new EufySecurityClient(config);
+
+// First connection attempt
+var result = await client.ConnectAsync();
+
+if (result.RequiresTwoFactor)
+{
+    Console.WriteLine("Check your email for the verification code!");
+    Console.WriteLine("The code will arrive within a few seconds and expires in 5 minutes.");
+
+    Console.Write("Enter verification code: ");
+    var verifyCode = Console.ReadLine();
+
+    // Second connection attempt with verification code
+    result = await client.ConnectAsync(verifyCode);
+
+    if (result.Success)
+    {
+        Console.WriteLine("Authentication successful!");
+    }
+    else
+    {
+        Console.WriteLine($"Authentication failed: {result.Message}");
+    }
+}
+else if (result.Success)
+{
+    Console.WriteLine("Authentication successful (no 2FA required)!");
+}
+```
+
+### Method 2: Pre-configured Verification Code
+
+For automated/unattended scenarios where you've already received the code:
+
+```csharp
+var config = new EufySecurityConfig
+{
+    Username = "your-email@example.com",
+    Password = "your-password",
+    Country = "US"
+};
+
+var client = new EufySecurityClient(config);
+
+// If you already have the verification code (e.g., from config file)
+string? verifyCode = "123456"; // From your email
+
+var result = await client.ConnectAsync(verifyCode);
+
+if (result.Success)
+{
+    Console.WriteLine("Connected!");
+}
+else if (result.RequiresTwoFactor)
+{
+    Console.WriteLine("Verification code was invalid or expired.");
+    Console.WriteLine("Check your email for a new code.");
+}
+```
+
+### Method 3: Event-Driven Approach
+
+Subscribe to the TwoFactorAuthRequired event:
+
+```csharp
+var config = new EufySecurityConfig
+{
+    Username = "your-email@example.com",
+    Password = "your-password",
+    Country = "US"
+};
+
+var client = new EufySecurityClient(config);
+
+// Optional: Subscribe to 2FA event (for logging/notifications)
+// Note: This event fires from HttpApiClient internally
+// You would need to expose it through EufySecurityClient if desired
+
+var result = await client.ConnectAsync();
+
+if (result.RequiresTwoFactor)
+{
+    // Handle 2FA requirement
+    // Email has already been sent automatically
+    var code = await GetVerificationCodeFromUser();
+    result = await client.ConnectAsync(code);
+}
+```
+
+## Demo Application Configuration
+
+For the ASP.NET Core demo application, configure 2FA in `appsettings.json`:
+
+### Initial Run (without VerifyCode)
+
+```json
+{
+  "Eufy": {
+    "Username": "your-email@example.com",
+    "Password": "your-password",
+    "Country": "UK",
+    "Language": "en"
+  }
+}
+```
+
+When you run the application, if 2FA is required, you'll see:
+
+```
+warn: Two-factor authentication required. Check your email for verification code.
+warn: Add the verification code to appsettings.json as 'Eufy:VerifyCode' and restart the application.
+```
+
+### Second Run (with VerifyCode)
+
+Update `appsettings.json` with the code from your email:
+
+```json
+{
+  "Eufy": {
+    "Username": "your-email@example.com",
+    "Password": "your-password",
+    "VerifyCode": "123456",
+    "Country": "UK",
+    "Language": "en"
+  }
+}
+```
+
+Restart the application. After successful authentication, you can remove the `VerifyCode` field.
+
+## Password vs PIN vs AppPassword
+
+Eufy has multiple credential types that can be confusing:
+
+### `Password`
+Your **actual Eufy account password** that you use to log into the mobile app.
+
+### `AppPassword` or `PIN`
+A **6-digit code** generated by Eufy for third-party integrations (like Google Assistant). This is **NOT the 2FA verification code**.
+
+⚠️ **Important**: If you're using EufySecurity.NET, you typically use your **real password**, not the PIN/AppPassword.
+
+### `VerifyCode`
+The **6-digit code sent to your email** during 2FA authentication. This is temporary and expires in 5 minutes.
+
+### Configuration Example
+
+```csharp
+var config = new EufySecurityConfig
+{
+    Username = "your-email@example.com",
+
+    // Use your ACTUAL account password
+    Password = "mySecurePassword123",
+
+    // NOT the PIN/AppPassword (unless you're using that specifically)
+    // NOT the verification code (that's provided during ConnectAsync)
+
+    Country = "US"
+};
+```
+
+## ECDH Password Encryption
+
+EufySecurity.NET uses **ECDH (Elliptic Curve Diffie-Hellman)** key exchange with **AES-256-CBC** encryption to securely transmit passwords:
+
+1. Client generates an ECDH key pair using the `secp256r1` (prime256v1) curve
+2. Client computes shared secret with Eufy's server public key
+3. Password is encrypted with AES-256-CBC using the shared secret
+4. Encrypted password and client public key are sent to server
+5. Server decrypts using its private key
+
+This ensures passwords are never transmitted in plain text.
+
+## Troubleshooting
+
+### "Authentication failed with code 26052"
+- **2FA is required**: Check your email for the verification code
+- Verification code is sent automatically when you attempt to authenticate
+- Code is valid for 5 minutes
+
+### "Authentication failed: Invalid credentials"
+- Check that your username (email) is correct
+- Check that you're using your **account password**, not a PIN or verification code
+- Ensure `Country` matches your Eufy app setting (this is critical!)
+
+### "Token expired. Re-authenticate required."
+- Tokens expire after 30 days
+- Simply call `ConnectAsync()` again to re-authenticate
+
+### Verification code not received
+- Check spam/junk folder
+- Ensure the email in your config matches your Eufy account
+- Wait a few seconds - delivery can be delayed
+- If requesting multiple times, old codes still work within 5-minute window
+
+### "Country must match Eufy app setting"
+- The `Country` parameter **must exactly match** what's configured in your Eufy Security mobile app
+- Common values: `US`, `UK`, `DE`, `FR`, `IT`, `ES`, `NL`, `CA`, `AU`
+- This is a critical security check by Eufy
+
+## Security Best Practices
+
+1. **Never commit credentials** to source control
+2. **Use environment variables** or secure configuration providers for production
+3. **Store verification codes temporarily** - they're meant to be short-lived
+4. **Consider trusted device management** to reduce 2FA prompts
+5. **Use HTTPS** when deploying applications that handle Eufy credentials
+
+## Example: Environment Variables
+
+```csharp
+var config = new EufySecurityConfig
+{
+    Username = Environment.GetEnvironmentVariable("EUFY_USERNAME")
+        ?? throw new Exception("EUFY_USERNAME not set"),
+    Password = Environment.GetEnvironmentVariable("EUFY_PASSWORD")
+        ?? throw new Exception("EUFY_PASSWORD not set"),
+    Country = Environment.GetEnvironmentVariable("EUFY_COUNTRY") ?? "US"
+};
+
+var client = new EufySecurityClient(config);
+var result = await client.ConnectAsync(
+    Environment.GetEnvironmentVariable("EUFY_VERIFY_CODE") // Optional
+);
+```
+
+## API Reference
+
+### `AuthenticationResult`
+
+```csharp
+public class AuthenticationResult
+{
+    public bool Success { get; set; }
+    public bool RequiresTwoFactor { get; set; }
+    public bool RequiresCaptcha { get; set; }
+    public string? Message { get; set; }
+    public string? CaptchaId { get; set; }
+    public string? CaptchaUrl { get; set; }
+}
+```
+
+### `ConnectAsync` Method
+
+```csharp
+public async Task<AuthenticationResult> ConnectAsync(
+    string? verifyCode = null,
+    CancellationToken cancellationToken = default)
+```
+
+**Parameters:**
+- `verifyCode`: Optional 6-digit verification code from email
+- `cancellationToken`: Cancellation token
+
+**Returns:** `AuthenticationResult` indicating success or required actions
+
+## Future: Captcha Support
+
+In addition to 2FA, Eufy may sometimes require captcha verification. The authentication flow supports this:
+
+```csharp
+if (result.RequiresCaptcha)
+{
+    Console.WriteLine($"Captcha required: {result.CaptchaUrl}");
+    Console.WriteLine($"Captcha ID: {result.CaptchaId}");
+
+    // Display captcha image to user and get response
+    // Then retry authentication with captcha info
+}
+```
+
+This feature is currently a placeholder for future implementation.
