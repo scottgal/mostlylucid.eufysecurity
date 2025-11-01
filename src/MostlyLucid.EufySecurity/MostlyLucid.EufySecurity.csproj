@@ -7,11 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>MostlyLucid.EufySecurity</PackageId>
-    <Authors>MostlyLucid</Authors>
-    <Company>MostlyLucid</Company>
+    <Authors>mostlyLucid</Authors>
+    <Company>mostlyLucid</Company>
     <Product>MostlyLucid.EufySecurity</Product>
     <Description>A .NET client library for controlling Eufy Security devices by connecting to Eufy cloud servers and local/remote stations over P2P. Supports cameras, doorbells, locks, sensors, and more.</Description>
     <Copyright>Public Domain</Copyright>
+      <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseFile>UNLICENSE</PackageLicenseFile>
     <PackageProjectUrl>https://github.com/scottgal/mostlylucid.eufysecurity</PackageProjectUrl>
     <RepositoryUrl>https://github.com/scottgal/mostlylucid.eufysecurity</RepositoryUrl>
@@ -26,6 +27,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+      <None Include=".\icon.png" Pack="true" PackagePath="">
+          <Link>Properties\icon.png</Link>
+      </None>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\UNLICENSE" Pack="true" PackagePath="\" />
   </ItemGroup>
