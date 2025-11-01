@@ -40,7 +40,7 @@ jobs:
 
     - name: Restore dependencies
       run: dotnet restore MostlyLucid.EufySecurity.sln
-
+ 
     - name: Build
       run: dotnet build MostlyLucid.EufySecurity.sln --configuration Release --no-restore
 
