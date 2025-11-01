@@ -7,7 +7,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(dotnet build:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(dotnet --version:*)",
+      "Bash(dotnet:*)"
     ],
     "deny": [],
     "ask": []
