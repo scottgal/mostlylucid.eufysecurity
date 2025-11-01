@@ -13,8 +13,8 @@
     <Description>A .NET client library for controlling Eufy Security devices by connecting to Eufy cloud servers and local/remote stations over P2P. Supports cameras, doorbells, locks, sensors, and more.</Description>
     <Copyright>Public Domain</Copyright>
     <PackageLicenseFile>UNLICENSE</PackageLicenseFile>
-    <PackageProjectUrl>https://github.com/scottgal/mostlylucidweb</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/scottgal/mostlylucidweb</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/scottgal/mostlylucid.eufysecurity</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/scottgal/mostlylucid.eufysecurity</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>eufy;security;camera;doorbell;homeautomation;iot;smarthome;p2p;mostlylucid</PackageTags>
     <Version>1.0.0</Version>
