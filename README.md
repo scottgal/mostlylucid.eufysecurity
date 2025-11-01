@@ -5,6 +5,9 @@
 
 A .NET client library for controlling Eufy Security devices by connecting to Eufy cloud servers and local/remote stations over P2P.
 
+> ****🚨🚨🚨 WARNING  🚨🚨🚨**** This is absolutely not production ready. As it stands this is JUST the output of the automated conversion and still needs cleanup work. I'm still workign out the auth piece so you can actually connect. STAY TUNED.
+
+
 > **🙏 Credits:** This project is a C# port of the excellent [eufy-security-client](https://github.com/bropat/eufy-security-client) TypeScript library by [bropat](https://github.com/bropat). All credit for the original design, protocol reverse-engineering, and implementation goes to bropat and the contributors of the original project. This .NET port was created with assistance from Claude AI to bring this functionality to the .NET ecosystem.
 
 ## Features
