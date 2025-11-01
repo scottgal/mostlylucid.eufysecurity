@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -13,11 +15,27 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper versioning
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        global-json-file: global.json
+
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        else
+          # For non-tag builds, use version from csproj with build number
+          VERSION=$(grep -oP '<Version>\K[^<]+' src/MostlyLucid.EufySecurity/MostlyLucid.EufySecurity.csproj)
+          VERSION="${VERSION}-ci.${GITHUB_RUN_NUMBER}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
 
     - name: Restore dependencies
       run: dotnet restore MostlyLucid.EufySecurity.sln
@@ -29,13 +47,14 @@ jobs:
       run: dotnet test MostlyLucid.EufySecurity.sln --configuration Release --no-build --verbosity normal
 
     - name: Pack
-      run: dotnet pack src/MostlyLucid.EufySecurity/MostlyLucid.EufySecurity.csproj --configuration Release --no-build --output ./artifacts
+      run: dotnet pack src/MostlyLucid.EufySecurity/MostlyLucid.EufySecurity.csproj --configuration Release --no-build --output ./artifacts /p:PackageVersion=${{ steps.get_version.outputs.version }}
 
     - name: Push to NuGet
+      if: startsWith(github.ref, 'refs/tags/')
       run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: nuget-package
+        name: nuget-package-${{ steps.get_version.outputs.version }}
         path: ./artifacts/*.nupkg

@@ -56,7 +56,9 @@ public class P2PClient : IDisposable
             // 3. Set up keepalive
             // 4. Handle encryption
 
-            // Placeholder implementation
+            // Placeholder implementation - will be async when fully implemented
+            await Task.CompletedTask;
+
             var udpClient = new UdpClient();
             _connections[station.SerialNumber] = udpClient;
 

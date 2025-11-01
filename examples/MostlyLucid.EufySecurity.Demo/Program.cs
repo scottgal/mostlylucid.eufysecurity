@@ -1,3 +1,4 @@
+using MostlyLucid.EufySecurity.Demo.HealthChecks;
 using MostlyLucid.EufySecurity.Demo.Hubs;
 using MostlyLucid.EufySecurity.Demo.Services;
 using Microsoft.OpenApi.Models;
@@ -58,15 +59,7 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<EufySe
 
 // Add health checks
 builder.Services.AddHealthChecks()
-    .AddCheck("EufySecurity", () =>
-    {
-        var eufyService = builder.Services.BuildServiceProvider()
-            .GetRequiredService<EufySecurityHostedService>();
-
-        return eufyService.Client != null
-            ? Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("EufySecurity client is connected")
-            : Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("EufySecurity client is not connected");
-    });
+    .AddCheck<EufySecurityHealthCheck>("EufySecurity");
 
 var app = builder.Build();
 

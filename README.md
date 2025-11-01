@@ -1,6 +1,6 @@
 # MostlyLucid.EufySecurity
 
-[![NuGet](https://img.shields.io/nuget/v/EufySecurity.svg)](https://www.nuget.org/packages/EufySecurity/)
+[![NuGet](https://img.shields.io/nuget/v/MostlyLucid.EufySecurity.svg)](https://www.nuget.org/packages/MostlyLucid.EufySecurity/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 A .NET client library for controlling Eufy Security devices by connecting to Eufy cloud servers and local/remote stations over P2P.
@@ -26,20 +26,20 @@ A .NET client library for controlling Eufy Security devices by connecting to Euf
 ## Installation
 
 ```bash
-dotnet add package EufySecurity
+dotnet add package MostlyLucid.EufySecurity
 ```
 
 Or via NuGet Package Manager:
 
 ```powershell
-Install-Package EufySecurity
+Install-Package MostlyLucid.EufySecurity
 ```
 
 ## Quick Start
 
 ```csharp
-using EufySecurity;
-using EufySecurity.Common;
+using MostlyLucid.EufySecurity;
+using MostlyLucid.EufySecurity.Common;
 
 // Configure the client
 var config = new EufySecurityConfig
@@ -52,7 +52,15 @@ var config = new EufySecurityConfig
 
 // Create and connect the client
 using var client = new EufySecurityClient(config);
-await client.ConnectAsync();
+var authResult = await client.ConnectAsync();
+
+if (authResult.RequiresTwoFactor)
+{
+    // Check email for verification code
+    Console.Write("Enter 2FA code: ");
+    var code = Console.ReadLine();
+    authResult = await client.ConnectAsync(code);
+}
 
 // Get all devices
 var devices = client.GetDevices();
@@ -234,7 +242,7 @@ All subsystems are coordinated by the main `EufySecurityClient` class.
 ## Important Notes
 
 - **Country Setting**: Must match the country set in your Eufy Security mobile app
-- **2FA**: If you have 2FA enabled, you may need to generate an app-specific password
+- **2FA**: Full two-factor authentication support with email verification codes - see [2FA Documentation](docs/2FA-AUTHENTICATION.md)
 - **P2P**: Local P2P connections work only when on the same network as your devices
 - **Rate Limiting**: The library implements automatic request throttling to avoid API limits
 
