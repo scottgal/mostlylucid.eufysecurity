@@ -277,6 +277,8 @@ Special thanks to:
 
 This is free and unencumbered software released into the public domain. See [UNLICENSE](UNLICENSE) file for details.
 
+This project is a port of the [eufy-security-client](https://github.com/bropat/eufy-security-client) TypeScript library by bropat, which is licensed under the MIT License. See the [original license](https://github.com/bropat/eufy-security-client/blob/master/LICENSE) and [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md) for attribution details.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

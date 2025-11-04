@@ -14,10 +14,11 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{3E3C3C3C-3C3C-3C3C-3C3C-3C3C3C3C3C3C}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
-		LICENSE = LICENSE
 		.gitignore = .gitignore
 		.github\workflows\build.yml = .github\workflows\build.yml
 		.github\workflows\nuget-publish.yml = .github\workflows\nuget-publish.yml
+		PROJECT_SUMMARY.md = PROJECT_SUMMARY.md
+		THIRD-PARTY-NOTICES.md = THIRD-PARTY-NOTICES.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{B36A84DF-456D-A817-6EDD-3EC3E7F6E11F}"
