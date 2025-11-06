@@ -125,11 +125,11 @@ public class PushNotificationServiceTests
     }
 
     [Fact]
-    public void Dispose_SetsDisconnectedState()
+    public async Task Dispose_SetsDisconnectedState()
     {
         // Arrange
         var service = new PushNotificationService();
-        service.StartAsync().Wait();
+        await service.StartAsync();
 
         // Act
         service.Dispose();

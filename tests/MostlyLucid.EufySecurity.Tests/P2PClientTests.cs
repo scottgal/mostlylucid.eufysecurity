@@ -69,12 +69,12 @@ public class P2PClientTests
     }
 
     [Fact]
-    public void Disconnect_DisconnectsStation()
+    public async Task Disconnect_DisconnectsStation()
     {
         // Arrange
         var client = new P2PClient();
         var station = new Station("TEST_STATION", "Test Station", "TestModel", DeviceType.Station);
-        station.IsConnected = true;
+        await client.ConnectAsync(station, "p2pDid", "dskKey");
 
         // Act
         client.Disconnect(station);
@@ -120,7 +120,7 @@ public class P2PClientTests
         var client = new P2PClient();
         var station = new Station("TEST_STATION", "Test Station", "TestModel", DeviceType.Station);
         var device = new IndoorCamera("TEST_DEVICE", "Test Device", "TestModel", DeviceType.IndoorCamera, "TEST_STATION");
-        station.IsConnected = true;
+        await client.ConnectAsync(station, "p2pDid", "dskKey");
 
         LivestreamEventArgs? raisedEventArgs = null;
         client.LivestreamStarted += (sender, args) => raisedEventArgs = args;
@@ -160,7 +160,7 @@ public class P2PClientTests
         var client = new P2PClient();
         var station = new Station("TEST_STATION", "Test Station", "TestModel", DeviceType.Station);
         var device = new IndoorCamera("TEST_DEVICE", "Test Device", "TestModel", DeviceType.IndoorCamera, "TEST_STATION");
-        station.IsConnected = true;
+        await client.ConnectAsync(station, "p2pDid", "dskKey");
 
         LivestreamEventArgs? raisedEventArgs = null;
         client.LivestreamStopped += (sender, args) => raisedEventArgs = args;
@@ -195,7 +195,7 @@ public class P2PClientTests
         // Arrange
         var client = new P2PClient();
         var station = new Station("TEST_STATION", "Test Station", "TestModel", DeviceType.Station);
-        station.IsConnected = true;
+        await client.ConnectAsync(station, "p2pDid", "dskKey");
 
         // Act
         Func<Task> act = async () => await client.SetGuardModeAsync(station, GuardMode.Home);
