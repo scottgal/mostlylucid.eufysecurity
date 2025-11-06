@@ -87,7 +87,9 @@ public class PushNotificationService : IDisposable
 
         if (_connected)
         {
-            StopAsync().GetAwaiter().GetResult();
+            // Set disconnected state without blocking
+            // In a real FCM implementation, would need to clean up connection
+            _connected = false;
         }
 
         _disposed = true;

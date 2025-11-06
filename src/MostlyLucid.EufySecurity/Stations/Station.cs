@@ -103,9 +103,12 @@ public class Station
         DeviceType deviceType,
         ILogger? logger = null)
     {
+        if (string.IsNullOrWhiteSpace(serialNumber))
+            throw new ArgumentException("Serial number cannot be null or empty", nameof(serialNumber));
+
         SerialNumber = serialNumber;
-        Name = name;
-        Model = model;
+        Name = name ?? "Unknown";
+        Model = model ?? "Unknown";
         DeviceType = deviceType;
         HardwareVersion = string.Empty;
         SoftwareVersion = string.Empty;
@@ -174,6 +177,12 @@ public class Station
     /// </summary>
     public virtual void Update(Dictionary<string, object> data)
     {
+        if (data == null)
+        {
+            _logger?.LogWarning("Attempted to update station {SerialNumber} with null data", SerialNumber);
+            return;
+        }
+
         if (data.TryGetValue("station_name", out var name) && name is string stationName)
             Name = stationName;
 

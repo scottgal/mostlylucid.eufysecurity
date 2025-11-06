@@ -111,7 +111,7 @@ public class EufySecurityClient : IDisposable
             {
                 var interval = TimeSpan.FromMinutes(_config.PollingIntervalMinutes);
                 _refreshTimer = new Timer(
-                    _ => RefreshDevicesAsync(CancellationToken.None).GetAwaiter().GetResult(),
+                    _ => _ = RefreshDevicesAsync(CancellationToken.None),
                     null,
                     interval,
                     interval);
