@@ -90,8 +90,8 @@ app.MapHub<EufyEventsHub>("/hubs/events");
 // Map health checks
 app.MapHealthChecks("/health");
 
-// Welcome endpoint - redirect to login
-app.MapGet("/", () => Results.Redirect("/Auth/Login"));
+// Welcome endpoint - show dashboard (or redirect to login if not connected)
+// Users can navigate to /Auth/Login manually if needed
 
 app.Logger.LogInformation("EufySecurity.NET Demo API starting...");
 app.Logger.LogInformation("Swagger UI available at: https://localhost:{Port}/",

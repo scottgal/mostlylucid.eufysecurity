@@ -155,6 +155,23 @@ public class EufySecurityHostedService(
             });
         };
 
+        _client.LivestreamData += async (sender, e) =>
+        {
+            _logger.LogDebug("Livestream data received: {DeviceName}, Size: {Size} bytes, IsVideo: {IsVideo}",
+                e.Device.Name, e.Data.Length, e.IsVideo);
+
+            await _hubContext.Clients.All.SendAsync("LivestreamData", new
+            {
+                deviceSerial = e.Device.SerialNumber,
+                deviceName = e.Device.Name,
+                dataSize = e.Data.Length,
+                isVideo = e.IsVideo,
+                // Include first 100 bytes as hex for debugging/display
+                hexPreview = BitConverter.ToString(e.Data.Take(Math.Min(100, e.Data.Length)).ToArray()).Replace("-", " "),
+                timestamp = DateTime.UtcNow
+            });
+        };
+
         _client.PushNotificationReceived += async (sender, e) =>
         {
             _logger.LogInformation("Push notification: {Type} from {DeviceSerial}",

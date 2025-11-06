@@ -1,0 +1,683 @@
+@page
+@model MostlyLucid.EufySecurity.Demo.Pages.IndexModel
+@{
+    ViewData["Title"] = "EufySecurity.NET - Live Monitor";
+}
+
+<div x-data="dashboard()" x-init="init()" class="font-mono">
+    <!-- Header with System Status -->
+    <div class="flex items-center justify-between mb-6 bg-base-100 p-4 rounded-lg shadow-lg border border-base-300">
+        <div class="flex items-center gap-4">
+            <div class="text-2xl font-bold tracking-tight">
+                <span class="text-primary">EUFY</span><span class="text-base-content">SECURITY.NET</span>
+            </div>
+            <div class="badge badge-lg" :class="connected ? 'badge-success' : 'badge-error'">
+                <span class="relative flex h-2 w-2 mr-2">
+                    <span x-show="connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2" :class="connected ? 'bg-success' : 'bg-error'"></span>
+                </span>
+                <span x-text="connected ? 'CONNECTED' : 'DISCONNECTED'"></span>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <div class="text-xs text-right opacity-70">
+                <div>System Time: <span x-text="currentTime">--:--:--</span></div>
+                <div>Uptime: <span x-text="uptime">--:--:--</span></div>
+            </div>
+            <button @@click="refreshDevices()" class="btn btn-sm btn-ghost" :class="{ 'loading': refreshing }">
+                <svg x-show="!refreshing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                REFRESH
+            </button>
+            <a href="/swagger" class="btn btn-sm btn-ghost">API DOCS</a>
+            <a href="/Auth/Login" class="btn btn-sm btn-primary">LOGIN</a>
+        </div>
+    </div>
+
+    <!-- System Metrics -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-base-100 p-4 rounded-lg border border-base-300 shadow">
+            <div class="text-xs text-base-content/60 mb-1">DEVICES ONLINE</div>
+            <div class="text-3xl font-bold text-primary" x-text="devices.length">0</div>
+            <div class="text-xs text-base-content/50 mt-1">Total registered devices</div>
+        </div>
+        <div class="bg-base-100 p-4 rounded-lg border border-base-300 shadow">
+            <div class="text-xs text-base-content/60 mb-1">ACTIVE STREAMS</div>
+            <div class="text-3xl font-bold text-accent" x-text="Object.keys(activeStreams).length">0</div>
+            <div class="text-xs text-base-content/50 mt-1">Live video streams</div>
+        </div>
+        <div class="bg-base-100 p-4 rounded-lg border border-base-300 shadow">
+            <div class="text-xs text-base-content/60 mb-1">DATA RECEIVED</div>
+            <div class="text-3xl font-bold text-secondary" x-text="formatBytes(totalBytesReceived)">0 B</div>
+            <div class="text-xs text-base-content/50 mt-1">Total bandwidth</div>
+        </div>
+        <div class="bg-base-100 p-4 rounded-lg border border-base-300 shadow">
+            <div class="text-xs text-base-content/60 mb-1">PACKETS/SEC</div>
+            <div class="text-3xl font-bold text-success" x-text="packetsPerSecond">0</div>
+            <div class="text-xs text-base-content/50 mt-1">Real-time throughput</div>
+        </div>
+    </div>
+
+    <!-- Connection Warning -->
+    <div x-show="!connected" class="alert alert-warning mb-6 font-mono" x-cloak>
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div>
+            <div class="font-bold">[WARNING] NO ACTIVE CONNECTION</div>
+            <div class="text-xs">Please authenticate to establish connection: <a href="/Auth/Login" class="link">LOGIN</a> | <a href="/swagger" class="link">API DOCUMENTATION</a></div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <!-- Device List -->
+        <div class="xl:col-span-3">
+            <div class="bg-base-100 rounded-lg border border-base-300 shadow">
+                <div class="border-b border-base-300 p-3 bg-base-200">
+                    <div class="text-xs font-bold tracking-wide">[REGISTERED DEVICES]</div>
+                </div>
+                <div class="p-3 space-y-2 max-h-[700px] overflow-y-auto">
+                    <div x-show="devices.length === 0" class="text-center py-8 text-base-content/50 text-xs" x-cloak>
+                        [NO DEVICES FOUND]<br>
+                        <span class="text-xs opacity-50">Authenticate to discover devices</span>
+                    </div>
+                    <template x-for="device in devices" :key="device.serialNumber">
+                        <div class="bg-base-200 p-3 rounded border cursor-pointer hover:border-primary transition-all"
+                             :class="{ 'border-primary ring-2 ring-primary ring-opacity-50': selectedDevice === device.serialNumber, 'border-base-300': selectedDevice !== device.serialNumber, 'opacity-50': !device.enabled }"
+                             @@click="selectDevice(device)">
+                            <div class="flex items-start justify-between mb-2">
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-xs font-bold truncate" x-text="device.name"></div>
+                                    <div class="text-xs text-base-content/50 truncate" x-text="device.serialNumber"></div>
+                                </div>
+                                <div x-show="activeStreams[device.serialNumber]" class="flex items-center gap-1 text-xs text-error" x-cloak>
+                                    <span class="relative flex h-2 w-2">
+                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+                                    </span>
+                                    REC
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1 text-xs">
+                                <div class="text-base-content/50">TYPE:</div>
+                                <div x-text="device.type" class="truncate"></div>
+                                <div class="text-base-content/50">MODEL:</div>
+                                <div x-text="device.model" class="truncate"></div>
+                                <div class="text-base-content/50">HW VER:</div>
+                                <div x-text="device.hardwareVersion" class="truncate"></div>
+                                <div class="text-base-content/50">SW VER:</div>
+                                <div x-text="device.softwareVersion" class="truncate"></div>
+                            </div>
+                            <div class="mt-2 flex gap-1">
+                                <button @@click.stop="startStream(device)"
+                                        x-show="!activeStreams[device.serialNumber]"
+                                        class="btn btn-xs btn-primary flex-1"
+                                        x-cloak>
+                                    START STREAM
+                                </button>
+                                <button @@click.stop="stopStream(device.serialNumber)"
+                                        x-show="activeStreams[device.serialNumber]"
+                                        class="btn btn-xs btn-error flex-1"
+                                        x-cloak>
+                                    STOP STREAM
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Video/Data Panel -->
+        <div class="xl:col-span-6">
+            <div class="bg-base-100 rounded-lg border border-base-300 shadow mb-4">
+                <div class="border-b border-base-300 p-3 bg-base-200 flex items-center justify-between">
+                    <div class="text-xs font-bold tracking-wide">
+                        [VIDEO STREAM]
+                        <span x-show="selectedDevice" x-text="`SN: ${selectedDevice}`"></span>
+                    </div>
+                    <div x-show="selectedDevice && activeStreams[selectedDevice]" class="flex items-center gap-2" x-cloak>
+                        <div class="flex items-center gap-1 text-xs text-error">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+                            </span>
+                            LIVE
+                        </div>
+                        <button @@click="stopStream(selectedDevice)" class="btn btn-xs btn-error">
+                            STOP
+                        </button>
+                    </div>
+                </div>
+                <div class="relative bg-black" style="min-height: 400px;">
+                    <!-- No device selected -->
+                    <div x-show="!selectedDevice" class="absolute inset-0 flex items-center justify-center text-green-500 text-xs" x-cloak>
+                        <div class="text-center">
+                            <pre class="text-base-content/30">
+╔════════════════════════════════════╗
+║   NO DEVICE SELECTED              ║
+║                                   ║
+║   Select a device from the list   ║
+║   to begin streaming              ║
+╚════════════════════════════════════╝
+                            </pre>
+                        </div>
+                    </div>
+
+                    <!-- Device selected but not streaming -->
+                    <div x-show="selectedDevice && !activeStreams[selectedDevice]" class="absolute inset-0 flex items-center justify-center" x-cloak>
+                        <div class="text-center text-base-content/70">
+                            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div class="text-xs mb-4">[STREAM INACTIVE]</div>
+                            <button @@click="startStreamForSelected()" class="btn btn-sm btn-primary" :class="{ 'loading': streamLoading }">
+                                INITIALIZE STREAM
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Canvas for video -->
+                    <canvas x-show="selectedDevice && activeStreams[selectedDevice]"
+                            x-ref="videoCanvas"
+                            class="w-full h-auto bg-black"
+                            style="min-height: 400px;"
+                            x-cloak>
+                    </canvas>
+
+                    <!-- Stream info overlay -->
+                    <div x-show="selectedDevice && activeStreams[selectedDevice]"
+                         class="absolute top-2 left-2 bg-black/80 backdrop-blur-sm px-3 py-2 rounded border border-error/50 text-xs"
+                         x-cloak>
+                        <div class="flex items-center gap-2 text-error mb-1">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+                            </span>
+                            <span class="font-bold">● REC</span>
+                        </div>
+                        <div x-show="streamMetadata[selectedDevice]" class="text-success space-y-0.5" x-cloak>
+                            <div>RESOLUTION: <span x-text="`${streamMetadata[selectedDevice]?.videoWidth || 0}x${streamMetadata[selectedDevice]?.videoHeight || 0}`"></span></div>
+                            <div>FRAMERATE: <span x-text="`${streamMetadata[selectedDevice]?.videoFps || 0} FPS`"></span></div>
+                            <div>V_CODEC: <span x-text="streamMetadata[selectedDevice]?.videoCodec || 'N/A'"></span></div>
+                            <div>A_CODEC: <span x-text="streamMetadata[selectedDevice]?.audioCodec || 'N/A'"></span></div>
+                        </div>
+                    </div>
+
+                    <!-- Stats overlay -->
+                    <div x-show="selectedDevice && activeStreams[selectedDevice]"
+                         class="absolute top-2 right-2 bg-black/80 backdrop-blur-sm px-3 py-2 rounded border border-primary/50 text-xs text-primary"
+                         x-cloak>
+                        <div>PACKETS: <span x-text="streamStats[selectedDevice]?.frames || 0"></span></div>
+                        <div>BYTES: <span x-text="formatBytes(streamStats[selectedDevice]?.bytes || 0)"></span></div>
+                        <div>DURATION: <span x-text="streamStats[selectedDevice]?.duration || '00:00'"></span></div>
+                        <div>BITRATE: <span x-text="streamStats[selectedDevice]?.bitrate || '0 kbps'"></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stream Statistics -->
+            <div x-show="selectedDevice && activeStreams[selectedDevice]" class="bg-base-100 rounded-lg border border-base-300 shadow" x-cloak>
+                <div class="border-b border-base-300 p-3 bg-base-200">
+                    <div class="text-xs font-bold tracking-wide">[STREAM STATISTICS]</div>
+                </div>
+                <div class="p-3">
+                    <div class="grid grid-cols-4 gap-4 text-xs">
+                        <div>
+                            <div class="text-base-content/50 mb-1">TOTAL PACKETS</div>
+                            <div class="text-2xl font-bold text-primary" x-text="streamStats[selectedDevice]?.frames || 0">0</div>
+                        </div>
+                        <div>
+                            <div class="text-base-content/50 mb-1">VIDEO PACKETS</div>
+                            <div class="text-2xl font-bold text-success" x-text="streamStats[selectedDevice]?.videoPackets || 0">0</div>
+                        </div>
+                        <div>
+                            <div class="text-base-content/50 mb-1">AUDIO PACKETS</div>
+                            <div class="text-2xl font-bold text-accent" x-text="streamStats[selectedDevice]?.audioPackets || 0">0</div>
+                        </div>
+                        <div>
+                            <div class="text-base-content/50 mb-1">AVG BITRATE</div>
+                            <div class="text-2xl font-bold text-secondary" x-text="streamStats[selectedDevice]?.bitrate || '0 kbps'">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Stream & Hex Dump -->
+        <div class="xl:col-span-3">
+            <!-- Raw Data Stream -->
+            <div class="bg-base-100 rounded-lg border border-base-300 shadow mb-4">
+                <div class="border-b border-base-300 p-3 bg-base-200 flex items-center justify-between">
+                    <div class="text-xs font-bold tracking-wide">[RAW DATA STREAM]</div>
+                    <button @@click="dataPackets = []" class="btn btn-xs btn-ghost">CLEAR</button>
+                </div>
+                <div class="p-3 h-80 overflow-y-auto bg-black text-green-500 text-xs font-mono scrollbar-thin">
+                    <div x-show="dataPackets.length === 0" class="text-base-content/30" x-cloak>
+                        [WAITING FOR DATA...]
+                    </div>
+                    <template x-for="(packet, index) in dataPackets.slice().reverse().slice(0, 100)" :key="index">
+                        <div class="border-b border-green-900/30 pb-1 mb-1">
+                            <div class="flex justify-between text-green-600">
+                                <span x-text="`PKT #${packet.id}`"></span>
+                                <span x-text="packet.time"></span>
+                            </div>
+                            <div class="flex gap-2 text-xs">
+                                <span class="text-cyan-500" x-text="packet.type"></span>
+                                <span class="text-yellow-500" x-text="`${packet.size} bytes`"></span>
+                                <span class="text-purple-500" x-text="packet.deviceSerial"></span>
+                            </div>
+                            <div class="text-green-400 mt-1 break-all" x-text="packet.hexPreview"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- System Events Log -->
+            <div class="bg-base-100 rounded-lg border border-base-300 shadow">
+                <div class="border-b border-base-300 p-3 bg-base-200 flex items-center justify-between">
+                    <div class="text-xs font-bold tracking-wide">[SYSTEM EVENTS]</div>
+                    <button @@click="events = []" class="btn btn-xs btn-ghost">CLEAR</button>
+                </div>
+                <div class="p-3 h-64 overflow-y-auto text-xs font-mono">
+                    <div x-show="events.length === 0" class="text-base-content/50" x-cloak>
+                        [NO EVENTS]
+                    </div>
+                    <template x-for="(event, index) in events.slice().reverse()" :key="index">
+                        <div class="mb-2 pb-2 border-b border-base-300">
+                            <div class="flex gap-2">
+                                <span class="text-base-content/50" x-text="event.time"></span>
+                                <span class="font-bold"
+                                      :class="{
+                                          'text-success': event.type === 'success',
+                                          'text-error': event.type === 'error',
+                                          'text-warning': event.type === 'warning',
+                                          'text-info': event.type === 'info'
+                                      }"
+                                      x-text="`[${event.type.toUpperCase()}]`"></span>
+                            </div>
+                            <div class="text-base-content/80 mt-1" x-text="event.message"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- SignalR -->
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@7.0.14/dist/browser/signalr.min.js"></script>
+
+    <script>
+        function dashboard() {
+            return {
+                connected: false,
+                devices: [],
+                stations: [],
+                selectedDevice: null,
+                activeStreams: {},
+                streamMetadata: {},
+                streamStats: {},
+                dataPackets: [],
+                events: [],
+                refreshing: false,
+                streamLoading: false,
+                hubConnection: null,
+                currentTime: '',
+                uptime: '00:00:00',
+                startTime: null,
+                totalBytesReceived: 0,
+                packetsPerSecond: 0,
+                packetCount: 0,
+                lastPacketTime: null,
+                packetIdCounter: 0,
+
+                async init() {
+                    this.startTime = Date.now();
+                    this.updateTime();
+                    setInterval(() => this.updateTime(), 1000);
+                    setInterval(() => this.calculatePacketsPerSecond(), 1000);
+
+                    // Initialize SignalR
+                    await this.initSignalR();
+
+                    // Load initial data
+                    await this.loadDevices();
+                    await this.loadStations();
+
+                    // Check connection status
+                    this.checkConnection();
+                },
+
+                updateTime() {
+                    const now = new Date();
+                    this.currentTime = now.toLocaleTimeString('en-US', { hour12: false });
+
+                    const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+                    const hours = Math.floor(elapsed / 3600);
+                    const minutes = Math.floor((elapsed % 3600) / 60);
+                    const seconds = elapsed % 60;
+                    this.uptime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                },
+
+                calculatePacketsPerSecond() {
+                    this.packetsPerSecond = this.packetCount;
+                    this.packetCount = 0;
+                },
+
+                async initSignalR() {
+                    this.hubConnection = new signalR.HubConnectionBuilder()
+                        .withUrl('/hubs/events')
+                        .withAutomaticReconnect()
+                        .build();
+
+                    this.hubConnection.on('DeviceAdded', (device) => {
+                        this.addEvent('info', `Device added: ${device.name} (${device.serialNumber})`);
+                        this.loadDevices();
+                    });
+
+                    this.hubConnection.on('StationAdded', (station) => {
+                        this.addEvent('info', `Station added: ${station.name} (${station.serialNumber})`);
+                        this.loadStations();
+                    });
+
+                    this.hubConnection.on('LivestreamStarted', (data) => {
+                        this.activeStreams[data.deviceSerial] = true;
+                        if (data.metadata) {
+                            this.streamMetadata[data.deviceSerial] = data.metadata;
+                        }
+                        this.streamStats[data.deviceSerial] = {
+                            frames: 0,
+                            videoPackets: 0,
+                            audioPackets: 0,
+                            bytes: 0,
+                            duration: '00:00',
+                            bitrate: '0 kbps',
+                            startTime: Date.now(),
+                            lastBitrateUpdate: Date.now(),
+                            lastBytes: 0
+                        };
+                        this.addEvent('success', `Stream started: ${data.deviceName}`);
+                        this.updateStreamDuration(data.deviceSerial);
+                        this.updateBitrate(data.deviceSerial);
+                    });
+
+                    this.hubConnection.on('LivestreamStopped', (data) => {
+                        delete this.activeStreams[data.deviceSerial];
+                        delete this.streamMetadata[data.deviceSerial];
+                        delete this.streamStats[data.deviceSerial];
+                        this.addEvent('warning', `Stream stopped: ${data.deviceName}`);
+                    });
+
+                    this.hubConnection.on('LivestreamData', (data) => {
+                        this.packetCount++;
+                        this.totalBytesReceived += data.dataSize;
+
+                        // Update stream stats
+                        if (this.streamStats[data.deviceSerial]) {
+                            this.streamStats[data.deviceSerial].frames++;
+                            this.streamStats[data.deviceSerial].bytes += data.dataSize;
+
+                            if (data.isVideo) {
+                                this.streamStats[data.deviceSerial].videoPackets++;
+                            } else {
+                                this.streamStats[data.deviceSerial].audioPackets++;
+                            }
+                        }
+
+                        // Add to data packets log
+                        this.dataPackets.push({
+                            id: ++this.packetIdCounter,
+                            type: data.isVideo ? 'VIDEO' : 'AUDIO',
+                            size: data.dataSize,
+                            deviceSerial: data.deviceSerial,
+                            hexPreview: data.hexPreview || '',
+                            time: new Date().toLocaleTimeString('en-US', { hour12: false })
+                        });
+
+                        // Keep only last 500 packets
+                        if (this.dataPackets.length > 500) {
+                            this.dataPackets = this.dataPackets.slice(-500);
+                        }
+
+                        // Render to canvas
+                        if (data.isVideo && this.selectedDevice === data.deviceSerial && this.$refs.videoCanvas) {
+                            this.renderStreamFrame(data.deviceSerial);
+                        }
+                    });
+
+                    this.hubConnection.on('PushNotification', (notification) => {
+                        let details = [];
+                        if (notification.personDetected) details.push('PERSON');
+                        if (notification.motionDetected) details.push('MOTION');
+                        if (notification.doorbellRing) details.push('DOORBELL');
+
+                        const detailsStr = details.length > 0 ? ` [${details.join(', ')}]` : '';
+                        this.addEvent('warning', `${notification.title || 'Notification'}: ${notification.message}${detailsStr}`);
+                    });
+
+                    try {
+                        await this.hubConnection.start();
+                        this.addEvent('success', 'SignalR connection established');
+                    } catch (err) {
+                        console.error('SignalR connection error:', err);
+                        this.addEvent('error', `SignalR connection failed: ${err.message}`);
+                        setTimeout(() => this.initSignalR(), 5000);
+                    }
+                },
+
+                async checkConnection() {
+                    try {
+                        const response = await fetch('/api/devices');
+                        this.connected = response.ok;
+                    } catch {
+                        this.connected = false;
+                    }
+                },
+
+                async loadDevices() {
+                    try {
+                        const response = await fetch('/api/devices');
+                        if (response.ok) {
+                            this.devices = await response.json();
+                            this.connected = true;
+                        }
+                    } catch (error) {
+                        console.error('Failed to load devices:', error);
+                        this.connected = false;
+                    }
+                },
+
+                async loadStations() {
+                    try {
+                        const response = await fetch('/api/stations');
+                        if (response.ok) {
+                            this.stations = await response.json();
+                        }
+                    } catch (error) {
+                        console.error('Failed to load stations:', error);
+                    }
+                },
+
+                async refreshDevices() {
+                    this.refreshing = true;
+                    try {
+                        const response = await fetch('/api/devices/refresh', { method: 'POST' });
+                        if (response.ok) {
+                            await this.loadDevices();
+                            await this.loadStations();
+                            this.addEvent('success', 'Device list refreshed successfully');
+                        }
+                    } catch (error) {
+                        console.error('Failed to refresh devices:', error);
+                        this.addEvent('error', `Refresh failed: ${error.message}`);
+                    } finally {
+                        this.refreshing = false;
+                    }
+                },
+
+                selectDevice(device) {
+                    this.selectedDevice = device.serialNumber;
+                    this.addEvent('info', `Selected device: ${device.name} (${device.serialNumber})`);
+                },
+
+                async startStream(device) {
+                    await this.startStreamForDevice(device.serialNumber);
+                },
+
+                async startStreamForSelected() {
+                    if (!this.selectedDevice) return;
+                    await this.startStreamForDevice(this.selectedDevice);
+                },
+
+                async startStreamForDevice(deviceSerial) {
+                    this.streamLoading = true;
+                    this.addEvent('info', `Initiating stream for device: ${deviceSerial}`);
+                    try {
+                        const response = await fetch(`/api/livestream/start?deviceSerial=${deviceSerial}`, {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            // Event will be triggered via SignalR
+                        } else {
+                            const error = await response.json();
+                            this.addEvent('error', `Stream initialization failed: ${error.error || 'Unknown error'}`);
+                        }
+                    } catch (error) {
+                        console.error('Failed to start stream:', error);
+                        this.addEvent('error', `Stream failed: ${error.message}`);
+                    } finally {
+                        this.streamLoading = false;
+                    }
+                },
+
+                async stopStream(deviceSerial) {
+                    this.addEvent('info', `Stopping stream for device: ${deviceSerial}`);
+                    try {
+                        const response = await fetch(`/api/livestream/stop?deviceSerial=${deviceSerial}`, {
+                            method: 'POST'
+                        });
+                        if (!response.ok) {
+                            const error = await response.json();
+                            this.addEvent('error', `Stop failed: ${error.error || 'Unknown error'}`);
+                        }
+                    } catch (error) {
+                        console.error('Failed to stop stream:', error);
+                        this.addEvent('error', `Stop failed: ${error.message}`);
+                    }
+                },
+
+                updateStreamDuration(deviceSerial) {
+                    if (!this.activeStreams[deviceSerial]) return;
+
+                    const stats = this.streamStats[deviceSerial];
+                    if (stats) {
+                        const elapsed = Math.floor((Date.now() - stats.startTime) / 1000);
+                        const minutes = Math.floor(elapsed / 60);
+                        const seconds = elapsed % 60;
+                        stats.duration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                    }
+
+                    setTimeout(() => this.updateStreamDuration(deviceSerial), 1000);
+                },
+
+                updateBitrate(deviceSerial) {
+                    if (!this.activeStreams[deviceSerial]) return;
+
+                    const stats = this.streamStats[deviceSerial];
+                    if (stats) {
+                        const now = Date.now();
+                        const timeDiff = (now - stats.lastBitrateUpdate) / 1000; // seconds
+                        const bytesDiff = stats.bytes - stats.lastBytes;
+
+                        if (timeDiff >= 1) {
+                            const bitsPerSecond = (bytesDiff * 8) / timeDiff;
+                            const kbps = Math.round(bitsPerSecond / 1000);
+                            stats.bitrate = `${kbps} kbps`;
+                            stats.lastBitrateUpdate = now;
+                            stats.lastBytes = stats.bytes;
+                        }
+                    }
+
+                    setTimeout(() => this.updateBitrate(deviceSerial), 1000);
+                },
+
+                renderStreamFrame(deviceSerial) {
+                    const canvas = this.$refs.videoCanvas;
+                    if (!canvas) return;
+
+                    const ctx = canvas.getContext('2d');
+                    const metadata = this.streamMetadata[deviceSerial];
+                    const stats = this.streamStats[deviceSerial];
+
+                    if (metadata && canvas.width === 0) {
+                        canvas.width = metadata.videoWidth || 1920;
+                        canvas.height = metadata.videoHeight || 1080;
+                    }
+
+                    // Draw dark background
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Draw grid pattern
+                    ctx.strokeStyle = '#1a1a1a';
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i < canvas.width; i += 50) {
+                        ctx.beginPath();
+                        ctx.moveTo(i, 0);
+                        ctx.lineTo(i, canvas.height);
+                        ctx.stroke();
+                    }
+                    for (let i = 0; i < canvas.height; i += 50) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, i);
+                        ctx.lineTo(canvas.width, i);
+                        ctx.stroke();
+                    }
+
+                    // Draw center info
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = '24px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('[ VIDEO STREAM DATA RECEIVING ]', canvas.width / 2, canvas.height / 2 - 40);
+
+                    ctx.font = '16px monospace';
+                    ctx.fillStyle = '#00aa00';
+                    ctx.fillText(`Packets: ${stats?.frames || 0}`, canvas.width / 2, canvas.height / 2);
+                    ctx.fillText(`Bandwidth: ${this.formatBytes(stats?.bytes || 0)}`, canvas.width / 2, canvas.height / 2 + 25);
+                    ctx.fillText(`Bitrate: ${stats?.bitrate || '0 kbps'}`, canvas.width / 2, canvas.height / 2 + 50);
+
+                    // Note
+                    ctx.font = '12px monospace';
+                    ctx.fillStyle = '#666';
+                    ctx.fillText('Note: Full video decoding (H264/H265) requires additional libraries', canvas.width / 2, canvas.height / 2 + 90);
+                },
+
+                addEvent(type, message) {
+                    this.events.push({
+                        type,
+                        message,
+                        time: new Date().toLocaleTimeString('en-US', { hour12: false })
+                    });
+
+                    // Keep only last 100 events
+                    if (this.events.length > 100) {
+                        this.events.shift();
+                    }
+                },
+
+                formatBytes(bytes) {
+                    if (bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                }
+            };
+        }
+    </script>
+}
