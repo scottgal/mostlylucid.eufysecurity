@@ -226,7 +226,7 @@ public class HttpApiClient : IDisposable
             var response = await _httpClient.SendAsync(request, cancellationToken);
 
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger?.LogDebug("Login response: {Response}", responseText);
+            _logger?.LogDebug("Login response received (status: {StatusCode})", response.StatusCode);
 
             var result = JsonSerializer.Deserialize<LoginSecResponse>(responseText);
 
@@ -333,12 +333,12 @@ public class HttpApiClient : IDisposable
             if (response.IsSuccessStatusCode)
             {
                 _logger?.LogInformation("Verification code sent to email");
-                _logger?.LogDebug("SendVerifyCode response: {Response}", responseText);
+                _logger?.LogDebug("SendVerifyCode response received (status: {StatusCode})", response.StatusCode);
             }
             else
             {
-                _logger?.LogWarning("Failed to send verification code. Status: {Status}, Response: {Response}",
-                    response.StatusCode, responseText);
+                _logger?.LogWarning("Failed to send verification code. Status: {Status}",
+                    response.StatusCode);
             }
         }
         catch (Exception ex)
