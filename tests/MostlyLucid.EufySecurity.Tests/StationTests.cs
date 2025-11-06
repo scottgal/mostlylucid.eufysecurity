@@ -87,4 +87,51 @@ public class StationTests
 
         mode.Should().Be(GuardMode.Away);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Constructor_WithInvalidSerialNumber_ThrowsArgumentException(string? serialNumber)
+    {
+        // Act
+        Action act = () => new Station(serialNumber!, "Test", "Model", DeviceType.Station);
+
+        // Assert
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*Serial number*");
+    }
+
+    [Fact]
+    public void Constructor_WithNullName_UsesUnknown()
+    {
+        // Act
+        var station = new Station("STATION1", null!, "Model", DeviceType.Station);
+
+        // Assert
+        station.Name.Should().Be("Unknown");
+    }
+
+    [Fact]
+    public void Constructor_WithNullModel_UsesUnknown()
+    {
+        // Act
+        var station = new Station("STATION1", "Test", null!, DeviceType.Station);
+
+        // Assert
+        station.Model.Should().Be("Unknown");
+    }
+
+    [Fact]
+    public void Update_WithNullData_DoesNotThrow()
+    {
+        // Arrange
+        var station = new Station("STATION1", "Test", "Model", DeviceType.Station);
+
+        // Act
+        Action act = () => station.Update(null!);
+
+        // Assert
+        act.Should().NotThrow();
+    }
 }

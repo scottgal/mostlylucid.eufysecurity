@@ -81,6 +81,17 @@ public class HttpApiClient : IDisposable
         string trustedDeviceName = "EufySecurity.NET",
         ILogger? logger = null)
     {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("Username cannot be null or empty", nameof(username));
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ArgumentException("Password cannot be null or empty", nameof(password));
+        if (string.IsNullOrWhiteSpace(country))
+            throw new ArgumentException("Country cannot be null or empty", nameof(country));
+        if (string.IsNullOrWhiteSpace(language))
+            throw new ArgumentException("Language cannot be null or empty", nameof(language));
+        if (string.IsNullOrWhiteSpace(trustedDeviceName))
+            throw new ArgumentException("Trusted device name cannot be null or empty", nameof(trustedDeviceName));
+
         _username = username;
         _password = password;
         _country = country.ToUpperInvariant();
@@ -345,7 +356,13 @@ public class HttpApiClient : IDisposable
 
         try
         {
-            var response = await _httpClient.GetAsync("/v1/app/get_devs_list", cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/app/get_devs_list");
+            if (!string.IsNullOrEmpty(_token))
+            {
+                request.Headers.Add("X-Auth-Token", _token);
+            }
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<StationListResponse>(cancellationToken);
@@ -367,7 +384,13 @@ public class HttpApiClient : IDisposable
 
         try
         {
-            var response = await _httpClient.GetAsync("/v1/app/get_devs_list", cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/app/get_devs_list");
+            if (!string.IsNullOrEmpty(_token))
+            {
+                request.Headers.Add("X-Auth-Token", _token);
+            }
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<DeviceListResponse>(cancellationToken);

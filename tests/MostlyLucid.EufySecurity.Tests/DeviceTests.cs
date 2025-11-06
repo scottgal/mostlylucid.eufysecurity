@@ -67,4 +67,65 @@ public class DeviceTests
         received.NewValue.Should().Be(true);
         d.HasProperty("enabled").Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Constructor_WithInvalidSerialNumber_ThrowsArgumentException(string? serialNumber)
+    {
+        // Act
+        Action act = () => new IndoorCamera(serialNumber!, "Test", "Model", DeviceType.IndoorCamera, "STATION1");
+
+        // Assert
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*Serial number*");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Constructor_WithInvalidStationSerialNumber_ThrowsArgumentException(string? stationSerialNumber)
+    {
+        // Act
+        Action act = () => new IndoorCamera("DEVICE1", "Test", "Model", DeviceType.IndoorCamera, stationSerialNumber!);
+
+        // Assert
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*Station serial number*");
+    }
+
+    [Fact]
+    public void Constructor_WithNullName_UsesUnknown()
+    {
+        // Act
+        var device = new IndoorCamera("DEVICE1", null!, "Model", DeviceType.IndoorCamera, "STATION1");
+
+        // Assert
+        device.Name.Should().Be("Unknown");
+    }
+
+    [Fact]
+    public void Constructor_WithNullModel_UsesUnknown()
+    {
+        // Act
+        var device = new IndoorCamera("DEVICE1", "Test", null!, DeviceType.IndoorCamera, "STATION1");
+
+        // Assert
+        device.Model.Should().Be("Unknown");
+    }
+
+    [Fact]
+    public void Update_WithNullData_DoesNotThrow()
+    {
+        // Arrange
+        var device = new IndoorCamera("DEVICE1", "Test", "Model", DeviceType.IndoorCamera, "STATION1");
+
+        // Act
+        Action act = () => device.Update(null!);
+
+        // Assert
+        act.Should().NotThrow();
+    }
 }
