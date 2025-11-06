@@ -1,7 +1,11 @@
 using MostlyLucid.EufySecurity.Demo.HealthChecks;
 using MostlyLucid.EufySecurity.Demo.Hubs;
 using MostlyLucid.EufySecurity.Demo.Services;
+using MostlyLucid.EufySecurity.Telemetry;
 using Microsoft.OpenApi.Models;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,6 +65,22 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<EufySe
 builder.Services.AddHealthChecks()
     .AddCheck<EufySecurityHealthCheck>("EufySecurity");
 
+// Configure OpenTelemetry
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource
+        .AddService(EufySecurityInstrumentation.ServiceName,
+                    serviceVersion: EufySecurityInstrumentation.ServiceVersion))
+    .WithTracing(tracing => tracing
+        .AddSource(EufySecurityInstrumentation.ActivitySource.Name)
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter())  // For Grafana Tempo/Jaeger
+    .WithMetrics(metrics => metrics
+        .AddMeter(EufySecurityInstrumentation.Meter.Name)
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddPrometheusExporter());  // For Prometheus/Grafana
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -90,6 +110,9 @@ app.MapHub<EufyEventsHub>("/hubs/events");
 // Map health checks
 app.MapHealthChecks("/health");
 
+// Map Prometheus metrics endpoint
+app.MapPrometheusScrapingEndpoint();
+
 // Welcome endpoint - redirect to login
 app.MapGet("/", () => Results.Redirect("/Auth/Login"));
 
@@ -97,6 +120,8 @@ app.Logger.LogInformation("EufySecurity.NET Demo API starting...");
 app.Logger.LogInformation("Swagger UI available at: https://localhost:{Port}/",
     app.Configuration["ASPNETCORE_HTTPS_PORT"] ?? "5001");
 app.Logger.LogInformation("SignalR Hub available at: https://localhost:{Port}/hubs/events",
+    app.Configuration["ASPNETCORE_HTTPS_PORT"] ?? "5001");
+app.Logger.LogInformation("Prometheus metrics available at: https://localhost:{Port}/metrics",
     app.Configuration["ASPNETCORE_HTTPS_PORT"] ?? "5001");
 
 app.Run();
