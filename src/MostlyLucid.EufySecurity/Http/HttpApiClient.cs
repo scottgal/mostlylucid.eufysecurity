@@ -54,6 +54,7 @@ public class HttpApiClient : IDisposable
     private byte[]? _serverPublicKeyBytes;
 
     private string? _token;
+    private string? _temporaryToken; // Temporary token for MFA flow
     private DateTime? _tokenExpiration;
     private bool _connected;
 
@@ -199,10 +200,19 @@ public class HttpApiClient : IDisposable
                 };
             }
 
-            var response = await _httpClient.PostAsJsonAsync(
-                "/v2/passport/login",
-                loginData,
-                cancellationToken);
+            // Create request message to add auth token header if needed
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/v2/passport/login");
+
+            // Add temporary auth token header if re-authenticating with verify code
+            if (!string.IsNullOrEmpty(verifyCode) && !string.IsNullOrEmpty(_temporaryToken))
+            {
+                request.Headers.Add("X-Auth-Token", _temporaryToken);
+                _logger?.LogDebug("Added temporary auth token to re-login request");
+            }
+
+            request.Content = JsonContent.Create(loginData);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
 
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger?.LogDebug("Login response: {Response}", responseText);
@@ -231,6 +241,9 @@ public class HttpApiClient : IDisposable
                             _serverPublicKeyBytes = HexStringToBytes(result.Data.ServerPublicKey);
                         }
 
+                        // Clear temporary token after successful authentication
+                        _temporaryToken = null;
+
                         _logger?.LogInformation("Authentication successful");
                         ConnectionStateChanged?.Invoke(this, true);
 
@@ -240,6 +253,13 @@ public class HttpApiClient : IDisposable
 
                 case CodeNeedVerifyCode: // 2FA required
                     _logger?.LogInformation("Two-factor authentication required");
+
+                    // Store temporary token for MFA flow
+                    if (result.Data?.AuthToken != null)
+                    {
+                        _temporaryToken = result.Data.AuthToken;
+                        _logger?.LogDebug("Stored temporary auth token for MFA flow");
+                    }
 
                     // Send verification code via email
                     await SendVerificationCodeAsync(cancellationToken);
@@ -279,20 +299,35 @@ public class HttpApiClient : IDisposable
     {
         try
         {
+            // Create a request with auth token header
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/sms/send/verify_code");
+
+            // Add temporary auth token header if available
+            if (!string.IsNullOrEmpty(_temporaryToken))
+            {
+                request.Headers.Add("X-Auth-Token", _temporaryToken);
+            }
+
             var data = new
             {
-                email = _username,
-                message_type = 2 // Email verification
+                message_type = 2, // Email verification (0=SMS, 1=PUSH, 2=EMAIL)
+                transaction = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"
             };
 
-            var response = await _httpClient.PostAsJsonAsync("/v1/user/email/sendcode", data, cancellationToken);
+            request.Content = JsonContent.Create(data);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+
             if (response.IsSuccessStatusCode)
             {
                 _logger?.LogInformation("Verification code sent to email");
+                _logger?.LogDebug("SendVerifyCode response: {Response}", responseText);
             }
             else
             {
-                _logger?.LogWarning("Failed to send verification code");
+                _logger?.LogWarning("Failed to send verification code. Status: {Status}, Response: {Response}",
+                    response.StatusCode, responseText);
             }
         }
         catch (Exception ex)
