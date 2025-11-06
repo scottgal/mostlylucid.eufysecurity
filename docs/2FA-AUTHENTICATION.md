@@ -11,14 +11,18 @@ Eufy Security uses email-based two-factor authentication to secure API access. H
 4. Client is authenticated
 
 ### Authentication with 2FA
-1. Client sends username and encrypted password
+1. Client sends username and encrypted password to `/v2/passport/login`
 2. Server detects 2FA is required for this account
-3. Server returns code `26052` (2FA required)
-4. Server automatically sends a 6-digit verification code to your email
-5. User retrieves code from email (valid for 5 minutes)
-6. Client resends authentication request **with the verification code**
-7. Server validates code and returns authentication token
-8. Client is authenticated
+3. Server returns code `26052` (2FA required) with a **temporary auth token**
+4. Client stores the temporary token
+5. Client calls `/v1/sms/send/verify_code` with the temporary token to request verification code
+6. Server sends a 6-digit verification code to your email (valid for 5 minutes)
+7. User retrieves code from email
+8. Client resends authentication request with:
+   - Header: `X-Auth-Token` (temporary token)
+   - Body: includes `verify_code` field
+9. Server validates code and returns final authentication token
+10. Client is authenticated
 
 ## Important Notes
 
@@ -219,6 +223,116 @@ EufySecurity.NET uses **ECDH (Elliptic Curve Diffie-Hellman)** key exchange with
 5. Server decrypts using its private key
 
 This ensures passwords are never transmitted in plain text.
+
+## Technical Implementation Details
+
+### API Endpoints
+
+The MFA flow uses the following Eufy API endpoints:
+
+#### 1. Initial Login - `/v2/passport/login` (POST)
+
+**Request Body:**
+```json
+{
+  "ab": "<client-public-key-hex>",
+  "password": "<encrypted-password-base64>",
+  "email": "user@example.com",
+  "time_zone": -28800000,
+  "transaction": "1234567890123"
+}
+```
+
+**Response (when 2FA required - code 26052):**
+```json
+{
+  "code": 26052,
+  "msg": "need validate code",
+  "data": {
+    "auth_token": "<temporary-token>",
+    "token_expires_at": 1700000000000
+  }
+}
+```
+
+#### 2. Send Verification Code - `/v1/sms/send/verify_code` (POST)
+
+**Headers:**
+- `X-Auth-Token`: `<temporary-token-from-step-1>`
+
+**Request Body:**
+```json
+{
+  "message_type": 2,
+  "transaction": "1234567890123"
+}
+```
+
+**Parameters:**
+- `message_type`: 0 = SMS, 1 = PUSH, 2 = EMAIL
+
+**Response:**
+```json
+{
+  "code": 0,
+  "msg": "Succeed."
+}
+```
+
+#### 3. Re-authenticate with Verification Code - `/v2/passport/login` (POST)
+
+**Headers:**
+- `X-Auth-Token`: `<temporary-token-from-step-1>`
+
+**Request Body:**
+```json
+{
+  "ab": "<client-public-key-hex>",
+  "password": "<encrypted-password-base64>",
+  "email": "user@example.com",
+  "time_zone": -28800000,
+  "transaction": "1234567890123",
+  "verify_code": "123456"
+}
+```
+
+**Response (success):**
+```json
+{
+  "code": 0,
+  "msg": "Succeed.",
+  "data": {
+    "auth_token": "<final-auth-token>",
+    "token_expires_at": 1732000000000,
+    "user_id": "...",
+    "email": "user@example.com"
+  }
+}
+```
+
+### Error Codes
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | CODE_WHATEVER_ERROR | Success |
+| 26050 | CODE_VERIFY_CODE_ERROR | Invalid verification code |
+| 26051 | CODE_VERIFY_CODE_EXPIRED | Verification code expired |
+| 26052 | CODE_NEED_VERIFY_CODE | 2FA required |
+| 26053 | CODE_VERIFY_CODE_MAX | Maximum verification attempts exceeded |
+| 26054 | CODE_VERIFY_CODE_NONE_MATCH | Verification code doesn't match |
+
+### Implementation Notes
+
+1. **Temporary Token Storage**: The temporary auth token from the initial 26052 response must be stored and used in subsequent requests during the MFA flow.
+
+2. **Transaction ID**: Each request includes a `transaction` field with a Unix timestamp in milliseconds. This helps prevent replay attacks.
+
+3. **Request Headers**: The `X-Auth-Token` header is critical for the verification code request and the re-authentication request.
+
+4. **Token Lifecycle**:
+   - Initial login returns temporary token (short-lived, for MFA flow only)
+   - After successful MFA, final token is returned (30-day expiration)
+   - Temporary token is cleared after successful authentication
 
 ## Troubleshooting
 
