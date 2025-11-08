@@ -1,378 +1,202 @@
-# Understanding the ASP.NET Core Request and Response Pipeline - Part 4: Routing and Endpoints
+# Understanding the ASP.NET Core Pipeline - Part 4: Routing (How URLs Actually Find Your Code)
 
-## Introduction
+<!--category-- ASP.NET Core, C#, Routing, Endpoints -->
+<datetime class="hidden">2024-11-08T03:00</datetime>
 
-We've journeyed through the hosting layer, explored Kestrel, and mastered middleware. Now we arrive at a crucial question: once a request makes it through your middleware pipeline, how does ASP.NET Core know which code to execute? The answer is **routing** and **endpoints**.
+> **AI GENERATED** - If that offends you, please stop reading.
 
-Routing is the mechanism that matches incoming HTTP requests to executable code. Endpoints are the destinations—the actual code that executes. Together, they form a powerful, flexible system that supports everything from simple route handlers to complex MVC applications.
+# Introduction
 
-In this part, we'll explore how routing works, how endpoints are registered and executed, and how you can leverage this system to build sophisticated applications.
+So you've got middleware processing requests. Great. But HOW does ASP.NET Core know which code to execute for `/api/users/123` versus `/products/shoes`?
 
-## The Evolution of Routing
+That's routing. And it's more important than you think.
 
-ASP.NET Core's routing has evolved significantly:
+I've seen developers treat routing as magic - copy some `[Route]` attributes, hope for the best. Then wonder why their API returns 404 for URLs that should work, or why two endpoints conflict.
 
-```mermaid
-timeline
-    title ASP.NET Core Routing Evolution
-    ASP.NET Core 1.0 - 2.2 : Traditional Routing : Routes defined in middleware : MapRoute for MVC
-    ASP.NET Core 3.0 - 3.1 : Endpoint Routing : UseRouting + UseEndpoints : Routing metadata aware
-    ASP.NET Core 6.0+ : Minimal APIs : Direct MapGet/MapPost : Simplified registration
-```
+Routing is NOT complicated. It's pattern matching + metadata. Understand it and you'll never be confused again.
 
-**Traditional Routing (Pre-3.0):**
-```csharp
-app.UseMvc(routes =>
-{
-    routes.MapRoute("default", "{controller=Home}/{action=Index}/{id?}");
-});
-```
+[TOC]
 
-**Endpoint Routing (3.0+):**
-```csharp
-app.UseRouting();
-app.UseEndpoints(endpoints =>
-{
-    endpoints.MapControllers();
-});
-```
+# The Problem
 
-**Modern Minimal APIs (6.0+):**
-```csharp
-app.MapGet("/users/{id}", (int id) => $"User {id}");
-```
+Most developers think routing just "works." Until it doesn't:
 
-## How Routing Works: The Two-Phase Process
+- Multiple routes match the same URL (which wins?)
+- Route parameters don't bind (was it `{id}` or `{userId}`?)
+- Constraints fail silently (why does `/api/users/abc` return 404?)
+- CORS preflight fails (routing hasn't matched yet?)
 
-Endpoint routing works in two phases:
+**ROUTING IS TWO PHASES - MATCHING AND EXECUTION**
+
+# How Routing ACTUALLY Works
+
+Modern ASP.NET Core (3.0+) uses endpoint routing, which is a two-phase process:
 
 ```mermaid
 graph LR
-    A[Request] --> B[Routing Middleware]
+    A[Request] --> B[UseRouting]
     B --> C{Match Route?}
-    C -->|Yes| D[Set Endpoint]
+    C -->|Yes| D[Set Endpoint + Route Values]
     C -->|No| E[No Endpoint Set]
-    D --> F[Authorization Middleware]
+    D --> F[Middleware<br/>Auth, CORS, etc.]
     E --> F
-    F --> G[Other Middleware]
-    G --> H[Endpoint Middleware]
-    H --> I{Endpoint Exists?}
-    I -->|Yes| J[Execute Endpoint]
-    I -->|No| K[404 Not Found]
-
-    style B fill:#ffe1e1
-    style H fill:#e1ffe1
-    style J fill:#e1e1ff
+    F --> G[Endpoint Middleware]
+    G --> H{Endpoint?}
+    H -->|Yes| I[Execute]
+    H -->|No| J[404]
 ```
 
-### Phase 1: Route Matching (`UseRouting()`)
+**Phase 1: `UseRouting()`** - Matches the URL pattern, sets the endpoint
+**Phase 2: Endpoint middleware** - Actually executes the matched endpoint
 
-The routing middleware examines the request and tries to match it to a registered endpoint:
+This separation is CRITICAL. Between matching and execution, other middleware (auth, CORS) can see WHICH endpoint was matched and make decisions based on it.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// Phase 1: Route matching happens here
+// Phase 1: Match the route
 app.UseRouting();
 
-// Between routing and endpoints, you can use middleware that needs route information
+// Between phases: Middleware can see the matched endpoint
 app.Use(async (context, next) =>
 {
     var endpoint = context.GetEndpoint();
     if (endpoint != null)
     {
-        Console.WriteLine($"Matched endpoint: {endpoint.DisplayName}");
+        Console.WriteLine($"Matched: {endpoint.DisplayName}");
 
         // Access route values
-        var routeValues = context.Request.RouteValues;
-        foreach (var (key, value) in routeValues)
+        if (context.Request.RouteValues.TryGetValue("id", out var id))
         {
-            Console.WriteLine($"  {key} = {value}");
+            Console.WriteLine($"ID parameter: {id}");
         }
     }
 
     await next(context);
 });
 
-app.UseAuthorization(); // Can make decisions based on matched endpoint
+app.UseAuthorization(); // Can check endpoint metadata for [Authorize]
 
-// Phase 2: Endpoint execution happens here
-app.MapGet("/users/{id}", (int id) => $"User {id}");
-
-app.Run();
-```
-
-**Flow diagram:**
-
-```mermaid
-sequenceDiagram
-    participant Request
-    participant Routing as UseRouting
-    participant Auth as UseAuthorization
-    participant Endpoint as Endpoint Middleware
-
-    Request->>Routing: GET /users/123
-    Note over Routing: Parse URL<br/>Match against patterns<br/>Extract route values
-    Routing->>Routing: Found match: /users/{id}
-    Routing->>Routing: Set endpoint metadata<br/>Set route values {id: 123}
-
-    Routing->>Auth: Continue with endpoint set
-    Note over Auth: Can check endpoint metadata<br/>for [Authorize] attributes
-
-    Auth->>Endpoint: Continue
-    Note over Endpoint: Endpoint is set
-    Endpoint->>Endpoint: Execute matched endpoint<br/>with route values
-
-    Endpoint->>Request: Return response
-```
-
-### Phase 2: Endpoint Execution
-
-The endpoint middleware executes the matched endpoint:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-app.UseRouting();
-
-// This middleware runs BEFORE endpoint execution
-app.Use(async (context, next) =>
-{
-    Console.WriteLine("Before endpoint execution");
-    await next(context);
-    Console.WriteLine("After endpoint execution");
-});
-
-// Endpoint execution happens here
-app.MapGet("/", () =>
-{
-    Console.WriteLine("Executing endpoint");
-    return "Hello World";
-});
+// Phase 2: Execute the endpoint
+app.MapGet("/users/{id:int}", (int id) => $"User {id}");
 
 app.Run();
 ```
 
-**Output:**
-```
-Before endpoint execution
-Executing endpoint
-After endpoint execution
-```
+WHY this matters: CORS middleware needs to know which endpoint was matched to apply the right policy. Auth middleware needs to see if the endpoint has `[Authorize]`. This all happens BETWEEN routing and execution.
 
-## Route Templates
+# Route Templates - The Pattern Language
 
-Route templates define the URL pattern to match:
-
-### Basic Templates
+Route templates define URL patterns. Simple concept, lots of options:
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
 // Literal path
-app.MapGet("/", () => "Home page");
+app.MapGet("/", () => "Home");
 
 // Single parameter
 app.MapGet("/users/{id}", (int id) => $"User {id}");
 
 // Multiple parameters
-app.MapGet("/posts/{year}/{month}/{day}", (int year, int month, int day) =>
-    $"Posts from {year}-{month:D2}-{day:D2}");
+app.MapGet("/posts/{year}/{month}/{day}",
+    (int year, int month, int day) => $"Posts: {year}-{month}-{day}");
 
 // Optional parameter
 app.MapGet("/products/{id?}", (int? id) =>
     id.HasValue ? $"Product {id}" : "All products");
 
 // Default value
-app.MapGet("/search/{query=all}", (string query) =>
-    $"Searching for: {query}");
+app.MapGet("/search/{query=all}", (string query) => $"Search: {query}");
 
-// Catch-all parameter
-app.MapGet("/files/{*path}", (string path) =>
-    $"File path: {path}");
-
-app.Run();
+// Catch-all
+app.MapGet("/files/{*path}", (string path) => $"File: {path}");
 ```
 
 **Examples:**
 ```
-GET /                           → "Home page"
-GET /users/123                  → "User 123"
-GET /posts/2024/1/15            → "Posts from 2024-01-15"
-GET /products                   → "All products"
-GET /products/42                → "Product 42"
-GET /search                     → "Searching for: all"
-GET /search/aspnet              → "Searching for: aspnet"
-GET /files/docs/guide.pdf       → "File path: docs/guide.pdf"
+GET /                       → Home
+GET /users/123              → User 123
+GET /posts/2024/11/8        → Posts: 2024-11-8
+GET /products               → All products
+GET /products/42            → Product 42
+GET /search                 → Search: all
+GET /search/aspnet          → Search: aspnet
+GET /files/docs/guide.pdf   → File: docs/guide.pdf
 ```
 
-### Route Constraints
+Simple, right? The power is in CONSTRAINTS.
+
+# Route Constraints - Making Routes Specific
 
 Constraints ensure parameters match specific patterns:
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-// Integer constraint
-app.MapGet("/users/{id:int}", (int id) =>
-    $"User {id}");
-
-// Minimum value
-app.MapGet("/products/{id:int:min(1)}", (int id) =>
-    $"Product {id}");
-
-// Range
-app.MapGet("/items/{id:int:range(1,100)}", (int id) =>
-    $"Item {id}");
-
-// String length
-app.MapGet("/codes/{code:length(5)}", (string code) =>
-    $"Code {code}");
-
-// Min/max length
-app.MapGet("/names/{name:minlength(2):maxlength(20)}", (string name) =>
-    $"Name {name}");
-
-// Regex
-app.MapGet("/posts/{slug:regex(^[a-z0-9-]+$)}", (string slug) =>
-    $"Post slug: {slug}");
+// Integer only
+app.MapGet("/users/{id:int}", (int id) => $"User {id}");
 
 // GUID
-app.MapGet("/orders/{id:guid}", (Guid id) =>
-    $"Order {id}");
+app.MapGet("/orders/{id:guid}", (Guid id) => $"Order {id}");
 
-// DateTime
-app.MapGet("/appointments/{date:datetime}", (DateTime date) =>
-    $"Appointment on {date:yyyy-MM-dd}");
+// Min/max
+app.MapGet("/products/{id:int:min(1)}", (int id) => $"Product {id}");
 
-// Alpha (letters only)
-app.MapGet("/tags/{tag:alpha}", (string tag) =>
-    $"Tag: {tag}");
+// Range
+app.MapGet("/items/{id:int:range(1,100)}", (int id) => $"Item {id}");
+
+// Length
+app.MapGet("/codes/{code:length(5)}", (string code) => $"Code {code}");
+
+// Regex
+app.MapGet("/posts/{slug:regex(^[a-z0-9-]+$)}", (string slug) => $"Post {slug}");
 
 // Multiple constraints (AND)
-app.MapGet("/archive/{year:int:min(2000):max(2030)}", (int year) =>
-    $"Archive for {year}");
-
-app.Run();
-```
-
-**Built-in constraints:**
-
-| Constraint | Example | Matches |
-|------------|---------|---------|
-| `int` | `{id:int}` | 123, -456 |
-| `bool` | `{active:bool}` | true, false |
-| `datetime` | `{date:datetime}` | 2024-01-15 |
-| `decimal` | `{price:decimal}` | 19.99 |
-| `double` | `{lat:double}` | 51.5074 |
-| `float` | `{temp:float}` | 98.6 |
-| `guid` | `{id:guid}` | 550e8400-e29b-41d4-a716-446655440000 |
-| `long` | `{size:long}` | 9223372036854775807 |
-| `minlength(n)` | `{name:minlength(3)}` | abc, abcd |
-| `maxlength(n)` | `{name:maxlength(5)}` | abc, abcde |
-| `length(n)` | `{code:length(5)}` | abcde |
-| `min(n)` | `{age:min(18)}` | 18, 19, 100 |
-| `max(n)` | `{age:max(120)}` | 1, 100, 120 |
-| `range(min,max)` | `{num:range(1,10)}` | 1, 5, 10 |
-| `alpha` | `{tag:alpha}` | abc, XYZ |
-| `regex(pattern)` | `{code:regex(^[A-Z]{3}$)}` | ABC, XYZ |
-| `required` | `{id:required}` | Any non-empty value |
-
-**Testing constraints:**
-```bash
-# ✅ Matches {id:int}
-GET /users/123          → Success
-
-# ❌ Doesn't match {id:int}
-GET /users/abc          → 404
-
-# ✅ Matches {id:int:min(1)}
-GET /products/5         → Success
-
-# ❌ Doesn't match {id:int:min(1)}
-GET /products/0         → 404
-GET /products/-1        → 404
-```
-
-### Custom Route Constraints
-
-Create your own constraints:
-
-```csharp
-// Custom constraint: validates slugs
-public class SlugConstraint : IRouteConstraint
-{
-    private readonly Regex _regex = new Regex(@"^[a-z0-9]+(?:-[a-z0-9]+)*$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    public bool Match(HttpContext? httpContext, IRouter? route, string routeKey,
-        RouteValueDictionary values, RouteDirection routeDirection)
-    {
-        if (values.TryGetValue(routeKey, out var value) && value != null)
-        {
-            var slug = value.ToString();
-            return !string.IsNullOrEmpty(slug) && _regex.IsMatch(slug);
-        }
-
-        return false;
-    }
-}
-
-// Register the constraint
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<RouteOptions>(options =>
-{
-    options.ConstraintMap.Add("slug", typeof(SlugConstraint));
-});
-
-var app = builder.Build();
-
-// Use the custom constraint
-app.MapGet("/blog/{slug:slug}", (string slug) =>
-    $"Blog post: {slug}");
-
-app.Run();
+app.MapGet("/archive/{year:int:min(2000):max(2030)}", (int year) => $"Year {year}");
 ```
 
 **Testing:**
 ```bash
-GET /blog/my-first-post          → ✅ "Blog post: my-first-post"
-GET /blog/hello-world-2024       → ✅ "Blog post: hello-world-2024"
-GET /blog/My_Invalid_Slug        → ❌ 404
-GET /blog/has spaces             → ❌ 404
+GET /users/123          → ✅ User 123
+GET /users/abc          → ❌ 404 (not an int)
+GET /products/0         → ❌ 404 (min is 1)
+GET /products/5         → ✅ Product 5
+GET /codes/ABC12        → ❌ 404 (not length 5)
+GET /codes/ABC12        → ✅ Code ABC12
 ```
 
-## Route Priorities and Ordering
+Constraints fail SILENTLY - they just don't match. No error, just 404.
 
-When multiple routes match, ASP.NET Core uses a priority system:
+## Common Constraints
 
-```mermaid
-graph TD
-    A[Incoming Request] --> B{Route Matching}
-    B --> C[Order by Priority]
-    C --> D[1. Literal segments highest]
-    D --> E[2. Constrained parameters]
-    E --> F[3. Unconstrained parameters]
-    F --> G[4. Optional parameters]
-    G --> H[5. Catch-all parameters lowest]
-    H --> I[Select first match]
+| Constraint | Matches |
+|------------|---------|
+| `int` | Integer numbers |
+| `bool` | true, false |
+| `datetime` | Date/time |
+| `decimal` | Decimal numbers |
+| `guid` | GUID format |
+| `long` | Long integer |
+| `min(n)` | Minimum value |
+| `max(n)` | Maximum value |
+| `range(min,max)` | Value range |
+| `minlength(n)` | Minimum string length |
+| `maxlength(n)` | Maximum string length |
+| `length(n)` | Exact string length |
+| `alpha` | Letters only |
+| `regex(pattern)` | Regex pattern |
 
-    style I fill:#ccffcc
-```
+# Route Priority - When Multiple Routes Match
 
-**Example:**
+If multiple routes match, ASP.NET Core uses this priority order:
+
+1. **Literal segments** (highest priority)
+2. **Constrained parameters**
+3. **Unconstrained parameters**
+4. **Optional parameters**
+5. **Catch-all parameters** (lowest priority)
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-// Priority 1: Literal segments (highest priority)
-app.MapGet("/users/admin", () => "Admin user endpoint");
+// Priority 1: Literal (highest)
+app.MapGet("/users/admin", () => "Admin page");
 
 // Priority 2: Constrained parameter
 app.MapGet("/users/{id:int}", (int id) => $"User {id}");
@@ -380,22 +204,16 @@ app.MapGet("/users/{id:int}", (int id) => $"User {id}");
 // Priority 3: Unconstrained parameter
 app.MapGet("/users/{username}", (string username) => $"User @{username}");
 
-// Priority 4: Optional parameter
-app.MapGet("/users/{id:int?}", (int? id) =>
-    id.HasValue ? $"User {id}" : "All users");
-
-// Priority 5: Catch-all (lowest priority)
+// Priority 4: Catch-all (lowest)
 app.MapGet("/users/{*path}", (string path) => $"Catch-all: {path}");
-
-app.Run();
 ```
 
-**Matching behavior:**
-```bash
-GET /users/admin        → "Admin user endpoint" (literal match)
-GET /users/123          → "User 123" (constrained parameter)
-GET /users/john         → "User @john" (unconstrained parameter)
-GET /users/admin/test   → "Catch-all: admin/test" (catch-all)
+**Matching:**
+```
+GET /users/admin     → "Admin page" (literal wins)
+GET /users/123       → "User 123" (constrained wins over unconstrained)
+GET /users/john      → "User @john" (unconstrained wins over catch-all)
+GET /users/a/b/c     → "Catch-all: a/b/c" (catch-all gets everything else)
 ```
 
 You can also set explicit order:
@@ -404,281 +222,145 @@ You can also set explicit order:
 app.MapGet("/products/{id}", (int id) => $"Product {id}")
     .WithOrder(1);
 
-app.MapGet("/products/featured", () => "Featured products")
+app.MapGet("/products/featured", () => "Featured")
     .WithOrder(0); // Lower number = higher priority
 ```
 
-## Parameter Binding
+# Parameter Binding - Where Data Comes From
 
-ASP.NET Core can bind route parameters from multiple sources:
-
-### Route Values
+Parameters can bind from multiple sources:
 
 ```csharp
-app.MapGet("/users/{id}/posts/{postId}", (int id, int postId) =>
-    $"User {id}, Post {postId}");
-```
+// From route
+app.MapGet("/users/{id}", (int id) => ...);
 
-### Query String
+// From query string
+app.MapGet("/search", (string q, int page = 1) => ...);
+// GET /search?q=aspnet&page=2
 
-```csharp
-app.MapGet("/search", (string? q, int page = 1, int pageSize = 10) =>
-    $"Query: {q}, Page: {page}, Size: {pageSize}");
+// From header
+app.MapGet("/api/data",
+    ([FromHeader(Name = "X-API-Key")] string apiKey) => ...);
 
-// GET /search?q=aspnet&page=2&pageSize=20
-```
+// From body (POST/PUT)
+app.MapPost("/users", ([FromBody] User user) => ...);
 
-### Headers
+// From services (DI)
+app.MapGet("/data", (IMyService service) => ...);
 
-```csharp
-app.MapGet("/api/data", ([FromHeader(Name = "X-API-Key")] string apiKey) =>
-    $"API Key: {apiKey}");
-```
+// From HttpContext
+app.MapGet("/info", (HttpContext context) => ...);
 
-### Body
-
-```csharp
-app.MapPost("/users", ([FromBody] User user) =>
+// Mix and match
+app.MapPost("/users/{id}/posts",
+    (int id,                                    // From route
+     [FromQuery] bool publish,                  // From query string
+     [FromBody] Post post,                      // From body
+     [FromServices] IPostService service,       // From DI
+     HttpContext context) =>                    // Context
 {
-    return Results.Created($"/users/{user.Id}", user);
-});
-
-public record User(int Id, string Name, string Email);
-```
-
-### Services (Dependency Injection)
-
-```csharp
-app.MapGet("/data", (IMyService service) =>
-{
-    var data = service.GetData();
-    return data;
+    // All bound automatically
 });
 ```
 
-### HttpContext
+*NOTE: ASP.NET Core is smart about binding. It looks at route first, then query string, then body for complex types.*
+
+# Route Groups - Organization
+
+Group related routes with shared configuration:
 
 ```csharp
-app.MapGet("/info", (HttpContext context) =>
-{
-    var userAgent = context.Request.Headers["User-Agent"];
-    var ip = context.Connection.RemoteIpAddress;
-
-    return new
-    {
-        UserAgent = userAgent.ToString(),
-        IpAddress = ip?.ToString()
-    };
-});
-```
-
-### Complex Binding Example
-
-```csharp
-public record CreatePostRequest(string Title, string Content, List<string> Tags);
-
-app.MapPost("/api/posts",
-    async (
-        [FromRoute] int userId,
-        [FromQuery] bool publish,
-        [FromBody] CreatePostRequest request,
-        [FromHeader(Name = "X-Request-ID")] string requestId,
-        [FromServices] IPostService postService,
-        HttpContext context) =>
-    {
-        var post = await postService.CreatePostAsync(
-            userId,
-            request.Title,
-            request.Content,
-            request.Tags,
-            publish
-        );
-
-        context.Response.Headers["X-Request-ID"] = requestId;
-
-        return Results.Created($"/api/posts/{post.Id}", post);
-    });
-
-// POST /api/posts?publish=true
-// Header: X-Request-ID: abc123
-// Body: { "title": "Hello", "content": "World", "tags": ["aspnet", "routing"] }
-```
-
-## Endpoint Metadata
-
-Endpoints can have metadata that describes them:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddAuthorization();
-
-var app = builder.Build();
-
-app.UseAuthorization();
-
-// Add metadata with extension methods
-app.MapGet("/public", () => "Public endpoint")
-    .WithName("GetPublic")
-    .WithDisplayName("Public Endpoint")
-    .WithDescription("A public endpoint that anyone can access")
-    .WithTags("Public");
-
-app.MapGet("/private", () => "Private endpoint")
-    .RequireAuthorization() // Adds [Authorize] metadata
-    .WithName("GetPrivate");
-
-app.MapGet("/admin", () => "Admin only")
-    .RequireAuthorization("AdminPolicy");
-
-// Access metadata
-app.Map("/metadata", (IEndpointRouteBuilder endpoints) =>
-{
-    var dataSources = endpoints.DataSources;
-
-    var endpointList = dataSources
-        .SelectMany(ds => ds.Endpoints)
-        .OfType<RouteEndpoint>()
-        .Select(e => new
-        {
-            Name = e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName,
-            DisplayName = e.DisplayName,
-            Route = e.RoutePattern.RawText,
-            RequiresAuth = e.Metadata.GetMetadata<IAuthorizeData>() != null
-        });
-
-    return endpointList;
-});
-
-app.Run();
-```
-
-**Output from `/metadata`:**
-```json
-[
-  {
-    "name": "GetPublic",
-    "displayName": "Public Endpoint",
-    "route": "/public",
-    "requiresAuth": false
-  },
-  {
-    "name": "GetPrivate",
-    "displayName": null,
-    "route": "/private",
-    "requiresAuth": true
-  },
-  {
-    "name": null,
-    "displayName": null,
-    "route": "/admin",
-    "requiresAuth": true
-  }
-]
-```
-
-## Route Groups
-
-Group related endpoints with shared configuration:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-// Create a group with common prefix
 var api = app.MapGroup("/api");
 
-// All these routes are prefixed with /api
-api.MapGet("/users", () => "Get all users");
-api.MapGet("/users/{id}", (int id) => $"Get user {id}");
+api.MapGet("/users", () => "Get users");
 api.MapPost("/users", () => "Create user");
+api.MapGet("/products", () => "Get products");
 
 // Nested groups
 var v1 = api.MapGroup("/v1");
-v1.MapGet("/products", () => "V1 products");
+v1.MapGet("/data", () => "V1 data");
 
 var v2 = api.MapGroup("/v2");
-v2.MapGet("/products", () => "V2 products");
+v2.MapGet("/data", () => "V2 data");
 
-// Groups with shared metadata
-var adminApi = app.MapGroup("/admin")
+// Groups with middleware/metadata
+var admin = app.MapGroup("/admin")
     .RequireAuthorization("AdminPolicy")
     .WithTags("Admin");
 
-adminApi.MapGet("/users", () => "Admin: Get users");
-adminApi.MapDelete("/users/{id}", (int id) => $"Admin: Delete user {id}");
-
-app.Run();
+admin.MapGet("/users", () => "Admin users");
+admin.MapDelete("/users/{id}", (int id) => $"Delete {id}");
 ```
 
 **Routes created:**
 ```
 GET    /api/users
-GET    /api/users/{id}
 POST   /api/users
-GET    /api/v1/products
-GET    /api/v2/products
-GET    /admin/users          [Authorize(AdminPolicy)]
-DELETE /admin/users/{id}     [Authorize(AdminPolicy)]
+GET    /api/products
+GET    /api/v1/data
+GET    /api/v2/data
+GET    /admin/users       [RequiresAuthorization]
+DELETE /admin/users/{id}  [RequiresAuthorization]
 ```
-
-**Visualization:**
 
 ```mermaid
 graph TD
-    Root[Root] --> Api[/api]
+    Root[Root] --> API[/api]
     Root --> Admin[/admin RequireAuth]
 
-    Api --> Users1[GET /users]
-    Api --> Users2[GET /users/{id}]
-    Api --> Users3[POST /users]
-    Api --> V1[/v1]
-    Api --> V2[/v2]
+    API --> Users1[GET /users]
+    API --> Users2[POST /users]
+    API --> Products[GET /products]
+    API --> V1[/v1]
+    API --> V2[/v2]
 
-    V1 --> V1Products[GET /products]
-    V2 --> V2Products[GET /products]
+    V1 --> V1Data[GET /data]
+    V2 --> V2Data[GET /data]
 
     Admin --> AdminUsers[GET /users]
     Admin --> AdminDelete[DELETE /users/{id}]
-
-    style Admin fill:#ffe1e1
-    style V1 fill:#e1ffe1
-    style V2 fill:#e1e1ff
 ```
 
-## Advanced Routing Scenarios
+# Real-World Examples
 
-### Content Negotiation by Route
+## API Versioning
 
 ```csharp
-app.MapGet("/data.json", () => Results.Json(new { data = "JSON" }));
-app.MapGet("/data.xml", () => Results.Text("<data>XML</data>", "application/xml"));
-app.MapGet("/data", (HttpContext context) =>
+var v1 = app.MapGroup("/api/v1");
+v1.MapGet("/users", () => new { version = 1, users = new[] { "Alice", "Bob" } });
+
+var v2 = app.MapGroup("/api/v2");
+v2.MapGet("/users", () => new
 {
-    var accept = context.Request.Headers["Accept"].ToString();
+    version = 2,
+    users = new[]
+    {
+        new { id = 1, name = "Alice" },
+        new { id = 2, name = "Bob" }
+    }
+});
 
-    if (accept.Contains("application/json"))
-        return Results.Json(new { data = "JSON" });
-
-    if (accept.Contains("application/xml"))
-        return Results.Text("<data>XML</data>", "application/xml");
-
-    return Results.Json(new { data = "Default JSON" });
+// Version in query string
+app.MapGet("/api/users", (int version = 1) =>
+{
+    return version == 2
+        ? Results.Json(new { version = 2, users = new[] { new { id = 1, name = "Alice" } } })
+        : Results.Json(new { version = 1, users = new[] { "Alice" } });
 });
 ```
 
-### Localized Routes
+## Localized Routes
 
 ```csharp
-// English routes
+// English
 app.MapGet("/en/products", () => "Products");
 app.MapGet("/en/about", () => "About Us");
 
-// Spanish routes
+// Spanish
 app.MapGet("/es/productos", () => "Productos");
 app.MapGet("/es/acerca", () => "Acerca de Nosotros");
 
-// Dynamic culture from route
+// Dynamic culture
 app.MapGet("/{culture}/home", (string culture) =>
 {
     CultureInfo.CurrentCulture = new CultureInfo(culture);
@@ -686,189 +368,98 @@ app.MapGet("/{culture}/home", (string culture) =>
 });
 ```
 
-### Versioned APIs
+## Debugging Routes
+
+See all registered routes:
 
 ```csharp
-// Version in route
-var v1 = app.MapGroup("/api/v1");
-v1.MapGet("/users", () => new { version = 1, users = new[] { "Alice", "Bob" } });
-
-var v2 = app.MapGroup("/api/v2");
-v2.MapGet("/users", () => new { version = 2, users = new[]
+app.MapGet("/routes", (IEnumerable<EndpointDataSource> sources) =>
 {
-    new { id = 1, name = "Alice" },
-    new { id = 2, name = "Bob" }
-}});
-
-// Version in query string
-app.MapGet("/api/users", (int version = 1) =>
-{
-    if (version == 2)
-        return Results.Json(new { version = 2, users = new[]
+    var endpoints = sources
+        .SelectMany(s => s.Endpoints)
+        .OfType<RouteEndpoint>()
+        .Select(e => new
         {
-            new { id = 1, name = "Alice" },
-            new { id = 2, name = "Bob" }
-        }});
+            Pattern = e.RoutePattern.RawText,
+            Order = e.Order,
+            Methods = e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods
+        });
 
-    return Results.Json(new { version = 1, users = new[] { "Alice", "Bob" } });
-});
-
-// Version in header
-app.MapGet("/api/data", (HttpContext context) =>
-{
-    var version = context.Request.Headers["X-API-Version"].FirstOrDefault() ?? "1";
-
-    return version switch
-    {
-        "2" => Results.Json(new { version = 2, data = "New format" }),
-        _ => Results.Json(new { version = 1, data = "Old format" })
-    };
+    return endpoints;
 });
 ```
 
-### Subdomain Routing
-
-```csharp
-app.Use(async (context, next) =>
-{
-    var host = context.Request.Host.Host;
-
-    if (host.StartsWith("api."))
-    {
-        context.Request.RouteValues["area"] = "api";
-    }
-    else if (host.StartsWith("admin."))
-    {
-        context.Request.RouteValues["area"] = "admin";
-    }
-
-    await next(context);
-});
-
-app.MapGet("/", (HttpContext context) =>
-{
-    var area = context.Request.RouteValues["area"]?.ToString() ?? "main";
-
-    return area switch
-    {
-        "api" => "API area",
-        "admin" => "Admin area",
-        _ => "Main area"
-    };
-});
-```
-
-## Route Debugging
-
-View all registered routes:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-app.MapGet("/users", () => "Users");
-app.MapPost("/users", () => "Create user");
-app.MapGet("/products/{id:int}", (int id) => $"Product {id}");
-
-// Endpoint to inspect all routes
-app.MapGet("/routes", (IEnumerable<EndpointDataSource> endpointSources) =>
-{
-    var endpoints = endpointSources
-        .SelectMany(es => es.Endpoints)
-        .OfType<RouteEndpoint>();
-
-    var routes = endpoints.Select(e => new
-    {
-        Name = e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName,
-        Pattern = e.RoutePattern.RawText,
-        Order = e.Order,
-        HttpMethods = e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods,
-        Metadata = e.Metadata.Select(m => m.GetType().Name)
-    });
-
-    return Results.Json(routes);
-});
-
-app.Run();
-```
-
-**Output from `/routes`:**
+**Output:**
 ```json
 [
   {
-    "name": null,
-    "pattern": "/users",
+    "pattern": "/users/{id:int}",
     "order": 0,
-    "httpMethods": ["GET"],
-    "metadata": ["HttpMethodMetadata", ...]
+    "methods": ["GET"]
   },
   {
-    "name": null,
-    "pattern": "/users",
+    "pattern": "/products",
     "order": 0,
-    "httpMethods": ["POST"],
-    "metadata": ["HttpMethodMetadata", ...]
-  },
-  {
-    "name": null,
-    "pattern": "/products/{id:int}",
-    "order": 0,
-    "httpMethods": ["GET"],
-    "metadata": ["HttpMethodMetadata", "RoutePatternMetadata", ...]
+    "methods": ["GET", "POST"]
   }
 ]
 ```
 
-## Performance Considerations
+# Common Routing Mistakes
 
-### Route Caching
-
-```csharp
-// Routes are compiled and cached at startup
-// This is fast:
-for (int i = 0; i < 1000; i++)
-{
-    app.MapGet($"/endpoint{i}", () => $"Endpoint {i}");
-}
-
-// At runtime, route matching is O(1) for most cases
-```
-
-### Link Generation
-
-Generate URLs from routes:
+## Mistake 1: Route Order Wrong
 
 ```csharp
-app.MapGet("/users/{id}", (int id) => $"User {id}")
-    .WithName("GetUser");
+// WRONG - specific route after general route
+app.MapGet("/users/{username}", (string username) => $"User @{username}");
+app.MapGet("/users/admin", () => "Admin"); // NEVER MATCHES
 
-app.MapGet("/generate-link", (LinkGenerator linkGenerator, HttpContext context) =>
-{
-    var url = linkGenerator.GetPathByName("GetUser", new { id = 123 });
-    // url = "/users/123"
-
-    var absoluteUrl = linkGenerator.GetUriByName(context, "GetUser", new { id = 123 });
-    // absoluteUrl = "https://localhost:5001/users/123"
-
-    return new { url, absoluteUrl };
-});
+// RIGHT - specific route first
+app.MapGet("/users/admin", () => "Admin");
+app.MapGet("/users/{username}", (string username) => $"User @{username}");
 ```
 
-## Key Takeaways
+Or use constraints:
 
-- Routing is a two-phase process: matching (UseRouting) and execution (endpoints)
-- Route templates support parameters, constraints, optional values, and catch-alls
-- Built-in constraints validate parameter types and patterns
-- Custom constraints provide application-specific validation
-- Route priority: literals > constrained parameters > unconstrained > optional > catch-all
-- Parameters can bind from routes, query string, headers, body, and services
-- Endpoint metadata enables features like authorization and documentation
-- Route groups simplify configuration for related endpoints
-- Link generation creates URLs from route names
-- The routing system is highly optimized for performance
+```csharp
+app.MapGet("/users/admin", () => "Admin");
+app.MapGet("/users/{id:int}", (int id) => $"User ID {id}");
+app.MapGet("/users/{username:alpha}", (string username) => $"User @{username}");
+```
 
-Routing and endpoints form the bridge between HTTP requests and your application code. Mastering this system gives you precise control over how URLs map to functionality.
+## Mistake 2: Missing Constraints
 
----
+```csharp
+// WRONG - accepts any string
+app.MapGet("/users/{id}", (int id) => ...); // BOOM when id = "abc"
 
-*Continue to Part 5: MVC, Razor Pages, and Minimal APIs to learn how different application models leverage the routing and endpoint system.*
+// RIGHT - constrain to int
+app.MapGet("/users/{id:int}", (int id) => ...); // "abc" returns 404
+```
+
+## Mistake 3: UseRouting After Endpoints
+
+```csharp
+// WRONG
+app.MapControllers();
+app.UseRouting(); // TOO LATE
+
+// RIGHT
+app.UseRouting();
+app.MapControllers();
+```
+
+# In Conclusion
+
+Routing is pattern matching with metadata. It's not magic.
+
+Key points:
+1. **Two phases** - Matching (`UseRouting`) and execution (endpoint middleware)
+2. **Constraints matter** - Use them to make routes specific
+3. **Priority is predictable** - Literals > constrained > unconstrained > catch-all
+4. **Binding is automatic** - Route, query, header, body, services
+5. **Groups organize** - Shared configuration for related routes
+
+In Part 5 we'll cover the different application models (MVC, Razor Pages, Minimal APIs) and how they use routing differently.
+
+Now go add proper constraints to your routes before someone sends `/users/😈` and breaks your app!
