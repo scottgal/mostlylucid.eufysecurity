@@ -68,13 +68,15 @@ THAT'S IT. No controllers, no action methods, no attributes (well, except `[From
 
 ## When to Use Minimal APIs
 
-✅ **Microservices** - Small, focused APIs
-✅ **Serverless** - Azure Functions, AWS Lambda
-✅ **Quick prototypes** - Get something running fast
-✅ **Simple APIs** - CRUD operations, webhooks
+**GOOD FOR:**
+- **Microservices** - Small, focused APIs
+- **Serverless** - Azure Functions, AWS Lambda
+- **Quick prototypes** - Get something running fast
+- **Simple APIs** - CRUD operations, webhooks
 
-❌ **Complex APIs** - Lots of endpoints, shared logic
-❌ **When you need structure** - Large teams, conventions
+**NOT GOOD FOR:**
+- **Complex APIs** - Lots of endpoints, shared logic
+- **When you need structure** - Large teams, conventions
 
 ## Parameter Binding
 
@@ -239,14 +241,16 @@ public class ContactModel : PageModel
 
 ## When to Use Razor Pages
 
-✅ **Page-focused apps** - Content sites, admin panels
-✅ **CRUD operations** - Forms, data entry
-✅ **Simpler than MVC** - Less ceremony, easier to understand
-✅ **Self-contained logic** - Each page owns its logic
+**GOOD FOR:**
+- **Page-focused apps** - Content sites, admin panels
+- **CRUD operations** - Forms, data entry
+- **Simpler than MVC** - Less ceremony, easier to understand
+- **Self-contained logic** - Each page owns its logic
 
-❌ **Complex routing** - Attribute routing is limited
-❌ **Reusable actions** - Hard to share logic between pages
-❌ **When you need MVC structure** - Large, complex apps
+**NOT GOOD FOR:**
+- **Complex routing** - Attribute routing is limited
+- **Reusable actions** - Hard to share logic between pages
+- **When you need MVC structure** - Large, complex apps
 
 # MVC - The Full-Featured Framework
 
@@ -440,14 +444,16 @@ public class ProductsController : Controller
 
 ## When to Use MVC
 
-✅ **Complex applications** - Large codebases, multiple teams
-✅ **Reusable logic** - Filters, action methods shared across controllers
-✅ **Convention over configuration** - You want structure
-✅ **API + Views** - Need both
+**GOOD FOR:**
+- **Complex applications** - Large codebases, multiple teams
+- **Reusable logic** - Filters, action methods shared across controllers
+- **Convention over configuration** - You want structure
+- **API + Views** - Need both
 
-❌ **Simple APIs** - Too much ceremony
-❌ **Learning ASP.NET** - Start with Minimal APIs
-❌ **Microservices** - Overkill
+**NOT GOOD FOR:**
+- **Simple APIs** - Too much ceremony
+- **Learning ASP.NET** - Start with Minimal APIs
+- **Microservices** - Overkill
 
 # Comparing the Three
 

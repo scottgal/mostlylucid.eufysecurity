@@ -155,12 +155,12 @@ app.MapGet("/archive/{year:int:min(2000):max(2030)}", (int year) => $"Year {year
 
 **Testing:**
 ```bash
-GET /users/123          → ✅ User 123
-GET /users/abc          → ❌ 404 (not an int)
-GET /products/0         → ❌ 404 (min is 1)
-GET /products/5         → ✅ Product 5
-GET /codes/ABC12        → ❌ 404 (not length 5)
-GET /codes/ABC12        → ✅ Code ABC12
+GET /users/123          → SUCCESS: User 123
+GET /users/abc          → FAIL: 404 (not an int)
+GET /products/0         → FAIL: 404 (min is 1)
+GET /products/5         → SUCCESS: Product 5
+GET /codes/ABC12        → FAIL: 404 (not length 5)
+GET /codes/ABC12        → SUCCESS: Code ABC12
 ```
 
 Constraints fail SILENTLY - they just don't match. No error, just 404.
