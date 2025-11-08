@@ -1,6 +1,6 @@
 # Understanding the ASP.NET Core Pipeline - Part 1: What Actually Happens When a Request Hits Your App
 
-<!--category-- ASP.NET Core, C#, Architecture -->
+<!--category-- AI-Article, ASP.NET Core Series, ASP.NET Core, C#, Architecture -->
 <datetime class="hidden">2024-11-08T00:00</datetime>
 
 > **AI GENERATED** - If that offends you, please stop reading.

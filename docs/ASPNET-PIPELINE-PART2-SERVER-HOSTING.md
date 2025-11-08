@@ -1,6 +1,6 @@
 # Understanding the ASP.NET Core Pipeline - Part 2: Kestrel and The Host (Where Your App Actually Lives)
 
-<!--category-- ASP.NET Core, C#, Kestrel, Hosting -->
+<!--category-- AI-Article, ASP.NET Core Series, ASP.NET Core, C#, Kestrel, Hosting -->
 <datetime class="hidden">2024-11-08T01:00</datetime>
 
 > **AI GENERATED** - If that offends you, please stop reading.

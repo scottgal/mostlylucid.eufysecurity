@@ -1,6 +1,6 @@
 # Understanding the ASP.NET Core Pipeline - Part 4: Routing (How URLs Actually Find Your Code)
 
-<!--category-- ASP.NET Core, C#, Routing, Endpoints -->
+<!--category-- AI-Article, ASP.NET Core Series, ASP.NET Core, C#, Routing, Endpoints -->
 <datetime class="hidden">2024-11-08T03:00</datetime>
 
 > **AI GENERATED** - If that offends you, please stop reading.

@@ -1,6 +1,6 @@
 # Understanding the ASP.NET Core Pipeline - Part 3: Middleware (The Stuff That Actually Does Things)
 
-<!--category-- ASP.NET Core, C#, Middleware, CORS, Authentication -->
+<!--category-- AI-Article, ASP.NET Core Series, ASP.NET Core, C#, Middleware, CORS, Authentication -->
 <datetime class="hidden">2024-11-08T02:00</datetime>
 
 > **AI GENERATED** - If that offends you, please stop reading.

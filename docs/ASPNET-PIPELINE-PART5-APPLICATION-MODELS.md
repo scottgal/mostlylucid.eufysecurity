@@ -1,922 +1,390 @@
-# Understanding the ASP.NET Core Request and Response Pipeline - Part 5: MVC, Razor Pages, and Minimal APIs
+# Understanding the ASP.NET Core Pipeline - Part 5: Minimal APIs vs MVC vs Razor Pages (Choosing Your Poison)
 
-## Introduction
+<!--category-- AI-Article, ASP.NET Core Series, ASP.NET Core, C#, MVC, Razor Pages, Minimal APIs -->
+<datetime class="hidden">2024-11-08T04:00</datetime>
 
-We've journeyed through the hosting layer, middleware pipeline, and routing system. Now we arrive at the application layer—where your business logic lives. ASP.NET Core offers three primary programming models for building web applications:
+> **AI GENERATED** - If that offends you, please stop reading.
 
-1. **MVC (Model-View-Controller)** - A structured pattern for building complex web applications and APIs
-2. **Razor Pages** - A page-based model that simplifies building web UI
-3. **Minimal APIs** - A lightweight approach for building HTTP APIs with minimal ceremony
+# Introduction
 
-Each model sits atop the same routing and endpoint infrastructure we explored in Part 4, but they provide different developer experiences and are optimized for different scenarios. In this part, we'll explore how each model processes requests and generates responses.
+So you know the pipeline, you understand routing. Now the question: HOW do you actually write your endpoints?
 
-## The Application Model Spectrum
+ASP.NET Core gives you THREE choices:
+1. **Minimal APIs** - Simple, fast, minimal ceremony
+2. **Razor Pages** - Page-focused web UI
+3. **MVC** - Full-featured, structured, the "old" way
 
-```mermaid
-graph LR
-    A[Minimal APIs] --> B[Razor Pages] --> C[MVC]
+And developers get VERY opinionated about which one to use. Let me save you some time: THEY ALL USE THE SAME PIPELINE. They're just different ways of organizing code.
 
-    style A fill:#e1ffe1
-    style B fill:#ffe1e1
-    style C fill:#e1e1ff
+[TOC]
 
-    note1[Lightweight<br/>Simple APIs]
-    note2[Page-focused<br/>Web UI]
-    note3[Full-featured<br/>Complex apps]
+# The Problem
 
-    A -.-> note1
-    B -.-> note2
-    C -.-> note3
-```
+I see developers agonizing over which model to choose. Should I use Minimal APIs or MVC? Can I mix them? When should I use Razor Pages?
 
-**When to use each:**
+Here's the truth: **Pick based on what you're building, not what's trendy.**
 
-- **Minimal APIs**: Microservices, simple APIs, serverless functions, learning ASP.NET Core
-- **Razor Pages**: Page-focused web apps, CRUD operations, forms-heavy applications
-- **MVC**: Complex web apps, APIs with complex routing, applications requiring clear separation of concerns
+Building a simple microservice? Minimal APIs.
+Building a CRUD-heavy web app? Razor Pages.
+Building a complex API with lots of structure? MVC.
 
-All three share the same pipeline but differ in how they organize code and handle requests.
+They all compile to the same thing - endpoints in the pipeline.
 
-## Minimal APIs: The Lightweight Approach
+# Minimal APIs - The Lightweight Choice
 
-Minimal APIs were introduced in .NET 6 to simplify API development. They reduce ceremony and boilerplate, making it faster to build HTTP APIs.
-
-### Basic Structure
+Minimal APIs were added in .NET 6 to reduce ceremony. Less code, faster startup, perfect for microservices.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services
-builder.Services.AddSingleton<IDataService, DataService>();
+builder.Services.AddSingleton<IProductService, ProductService>();
 
 var app = builder.Build();
 
-// Define endpoints
-app.MapGet("/", () => "Hello World!");
-
-app.MapGet("/users/{id}", (int id) => new User(id, "John Doe"));
-
-app.MapPost("/users", (User user) =>
+// That's it - define endpoints inline
+app.MapGet("/products", (IProductService service) =>
 {
-    // Save user
-    return Results.Created($"/users/{user.Id}", user);
+    return service.GetAll();
+});
+
+app.MapGet("/products/{id:int}", (int id, IProductService service) =>
+{
+    var product = service.GetById(id);
+    return product != null
+        ? Results.Ok(product)
+        : Results.NotFound();
+});
+
+app.MapPost("/products", ([FromBody] Product product, IProductService service) =>
+{
+    service.Add(product);
+    return Results.Created($"/products/{product.Id}", product);
 });
 
 app.Run();
-
-record User(int Id, string Name);
 ```
 
-### Request Processing Flow
+THAT'S IT. No controllers, no action methods, no attributes (well, except `[FromBody]`).
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Routing
-    participant Binding as Parameter Binding
-    participant Filter as Endpoint Filters
-    participant Handler as Route Handler
-    participant Result as Result Execution
+## When to Use Minimal APIs
 
-    Client->>Routing: HTTP Request
-    Routing->>Routing: Match route pattern
-    Routing->>Binding: Extract parameters
+✅ **Microservices** - Small, focused APIs
+✅ **Serverless** - Azure Functions, AWS Lambda
+✅ **Quick prototypes** - Get something running fast
+✅ **Simple APIs** - CRUD operations, webhooks
 
-    Note over Binding: Bind from:<br/>- Route values<br/>- Query string<br/>- Headers<br/>- Body<br/>- Services
+❌ **Complex APIs** - Lots of endpoints, shared logic
+❌ **When you need structure** - Large teams, conventions
 
-    Binding->>Filter: Execute filters (if any)
+## Parameter Binding
 
-    Filter->>Handler: Invoke handler delegate
-
-    Note over Handler: Execute your code
-
-    Handler->>Result: Return IResult or object
-
-    Result->>Result: Execute result<br/>(JSON, file, redirect, etc.)
-
-    Result->>Client: HTTP Response
-```
-
-### Parameter Binding in Detail
+Minimal APIs are SMART about parameter binding:
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<IEmailService, EmailService>();
-var app = builder.Build();
-
-// Simple types from route
-app.MapGet("/users/{id}", (int id) =>
-    new { userId = id });
-
-// Multiple sources
-app.MapGet("/search",
-    (string q,                                    // From query string
-     int page = 1,                               // From query string with default
-     [FromHeader(Name = "X-API-Key")] string apiKey,  // From header
-     [FromServices] IEmailService emailService)  // From DI container
-    =>
+app.MapPost("/create",
+    (int id,                                // From route? Query? - ASP.NET figures it out
+     [FromQuery] string? filter,            // Explicitly from query string
+     [FromHeader(Name = "X-Key")] string key, // From header
+     [FromBody] Product product,            // From request body
+     [FromServices] ILogger logger,         // From DI container
+     HttpContext context) =>                // Special type, injected
 {
-    return new
-    {
-        Query = q,
-        Page = page,
-        ApiKey = apiKey,
-        EmailServiceType = emailService.GetType().Name
-    };
+    // All parameters bound automatically
+    logger.LogInformation("Creating product {Id}", product.Id);
+    return Results.Created($"/products/{product.Id}", product);
 });
-
-// Complex type from body
-app.MapPost("/users",
-    ([FromBody] CreateUserRequest request,
-     [FromServices] IUserService userService,
-     HttpContext context) =>
-{
-    var user = userService.CreateUser(request);
-    return Results.Created($"/users/{user.Id}", user);
-});
-
-// Custom binding with AsParameters
-app.MapGet("/products", ([AsParameters] ProductQuery query) =>
-{
-    // All parameters bundled in one object
-    return new { query.Category, query.MinPrice, query.MaxPrice };
-});
-
-app.Run();
-
-record CreateUserRequest(string Name, string Email);
-
-// AsParameters allows grouping parameters
-record ProductQuery(string? Category, decimal MinPrice = 0, decimal MaxPrice = 1000);
-
-interface IEmailService { }
-class EmailService : IEmailService { }
-interface IUserService
-{
-    User CreateUser(CreateUserRequest request);
-}
-class User
-{
-    public int Id { get; set; }
-}
 ```
 
-**Binding sources visualization:**
+## Filters
 
-```mermaid
-graph TD
-    Request[HTTP Request] --> Route[Route Values<br/>users/123]
-    Request --> Query[Query String<br/>?page=1&size=10]
-    Request --> Headers[Headers<br/>X-API-Key: abc123]
-    Request --> Body[Request Body<br/>JSON/XML]
-    Request --> Services[DI Container<br/>Registered Services]
-
-    Route --> Handler[Handler Method]
-    Query --> Handler
-    Headers --> Handler
-    Body --> Handler
-    Services --> Handler
-
-    style Request fill:#ffe1e1
-    style Handler fill:#e1ffe1
-```
-
-### Results and Responses
-
-Minimal APIs support multiple response types:
+You can add filters to Minimal APIs:
 
 ```csharp
-var app = WebApplication.CreateBuilder().Build();
-
-// 1. Direct return - serialized as JSON
-app.MapGet("/users/{id}", (int id) =>
-    new User(id, "John Doe", "john@example.com"));
-
-// 2. IResult - typed results
-app.MapGet("/ok", () => Results.Ok(new { status = "OK" }));
-app.MapGet("/created", () => Results.Created("/users/1", new User(1, "Jane", "jane@example.com")));
-app.MapGet("/notfound", () => Results.NotFound());
-app.MapGet("/redirect", () => Results.Redirect("/new-location"));
-app.MapGet("/file", () => Results.File("file.pdf", "application/pdf"));
-
-// 3. Typed results with Results<T1, T2, ...>
-app.MapGet("/typed/{id}", Results<Ok<User>, NotFound> (int id) =>
-{
-    var user = GetUser(id);
-    return user != null
-        ? TypedResults.Ok(user)
-        : TypedResults.NotFound();
-});
-
-// 4. Custom response
-app.MapGet("/custom", (HttpContext context) =>
-{
-    context.Response.StatusCode = 200;
-    context.Response.Headers["X-Custom-Header"] = "Value";
-    return context.Response.WriteAsync("Custom response");
-});
-
-// 5. Stream response
-app.MapGet("/stream", async (HttpContext context) =>
-{
-    context.Response.ContentType = "text/plain";
-    await context.Response.StartAsync();
-
-    for (int i = 0; i < 10; i++)
-    {
-        await context.Response.WriteAsync($"Line {i}\n");
-        await context.Response.Body.FlushAsync();
-        await Task.Delay(100);
-    }
-});
-
-app.Run();
-
-record User(int Id, string Name, string Email);
-
-User? GetUser(int id) => id == 1 ? new User(1, "John", "john@example.com") : null;
-```
-
-### Endpoint Filters
-
-Filters allow you to execute code before and after the handler:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-// Global filter using middleware
-app.Use(async (context, next) =>
-{
-    Console.WriteLine($"Before: {context.Request.Path}");
-    await next(context);
-    Console.WriteLine($"After: {context.Response.StatusCode}");
-});
-
-// Endpoint-specific filter
-app.MapGet("/filtered", () => "Hello")
+app.MapGet("/data", () => "Data")
     .AddEndpointFilter(async (context, next) =>
     {
-        Console.WriteLine("Before handler");
+        // Before endpoint
+        Console.WriteLine("Before");
 
         var result = await next(context);
 
-        Console.WriteLine("After handler");
+        // After endpoint
+        Console.WriteLine("After");
 
         return result;
     });
 
-// Filter with logic
-app.MapGet("/validated", (int age) => $"Age: {age}")
+// Validation filter
+app.MapPost("/users", ([FromBody] User user) => Results.Ok(user))
     .AddEndpointFilter(async (context, next) =>
     {
-        var age = context.GetArgument<int>(0);
+        var user = context.GetArgument<User>(0);
 
-        if (age < 0)
+        if (string.IsNullOrWhiteSpace(user.Name))
         {
-            return Results.BadRequest("Age cannot be negative");
+            return Results.BadRequest("Name is required");
         }
 
         return await next(context);
     });
-
-// Reusable filter
-app.MapGet("/timed", () =>
-{
-    Thread.Sleep(100);
-    return "Done";
-})
-.AddEndpointFilter<TimingFilter>();
-
-app.Run();
-
-// Reusable filter class
-class TimingFilter : IEndpointFilter
-{
-    private readonly ILogger<TimingFilter> _logger;
-
-    public TimingFilter(ILogger<TimingFilter> logger)
-    {
-        _logger = logger;
-    }
-
-    public async ValueTask<object?> InvokeAsync(
-        EndpointFilterInvocationContext context,
-        EndpointFilterDelegate next)
-    {
-        var sw = Stopwatch.StartNew();
-
-        var result = await next(context);
-
-        sw.Stop();
-        _logger.LogInformation(
-            "Endpoint {Endpoint} took {Elapsed}ms",
-            context.HttpContext.Request.Path,
-            sw.ElapsedMilliseconds);
-
-        return result;
-    }
-}
 ```
 
-**Filter pipeline:**
+# Razor Pages - Page-Focused Web UI
 
-```mermaid
-graph LR
-    A[Request] --> B[Filter 1 Before]
-    B --> C[Filter 2 Before]
-    C --> D[Handler]
-    D --> E[Filter 2 After]
-    E --> F[Filter 1 After]
-    F --> G[Response]
+Razor Pages is ASP.NET Core's answer to "I just want to build a web app without all the MVC ceremony."
 
-    style D fill:#ffe1e1
-    style B fill:#e1ffe1
-    style C fill:#e1ffe1
-    style E fill:#e1ffe1
-    style F fill:#e1ffe1
-```
-
-## Razor Pages: Page-Based Web UI
-
-Razor Pages provides a page-focused model that makes building web UI simpler than MVC for many scenarios.
-
-### Structure
+Each page is self-contained: URL maps directly to a file.
 
 ```
 Pages/
-  _ViewImports.cshtml
-  _ViewStart.cshtml
-  Index.cshtml
+  Index.cshtml        → /
   Index.cshtml.cs
   Products/
-    List.cshtml
+    List.cshtml       → /products/list
     List.cshtml.cs
-    Details.cshtml
+    Details.cshtml    → /products/details
     Details.cshtml.cs
 ```
 
-### Basic Razor Page
+**Pages/Products/List.cshtml.cs:**
+```csharp
+public class ListModel : PageModel
+{
+    private readonly IProductService _service;
 
-**Pages/Index.cshtml:**
+    public ListModel(IProductService service)
+    {
+        _service = service;
+    }
+
+    public List<Product> Products { get; set; } = new();
+
+    public async Task OnGetAsync()
+    {
+        Products = await _service.GetAllAsync();
+    }
+}
+```
+
+**Pages/Products/List.cshtml:**
 ```cshtml
 @page
-@model IndexModel
+@model ListModel
 
-<h1>Welcome</h1>
-<p>Current time: @Model.CurrentTime</p>
+<h1>Products</h1>
 
-<form method="post">
-    <input type="text" asp-for="Name" />
-    <button type="submit">Submit</button>
-</form>
-
-@if (!string.IsNullOrEmpty(Model.Message))
+<ul>
+@foreach (var product in Model.Products)
 {
-    <p>@Model.Message</p>
+    <li>@product.Name - $@product.Price</li>
 }
+</ul>
 ```
 
-**Pages/Index.cshtml.cs:**
-```csharp
-public class IndexModel : PageModel
-{
-    [BindProperty]
-    public string Name { get; set; } = "";
+Simple, right? URL `/products/list` maps to `Pages/Products/List.cshtml`. No routing configuration needed.
 
-    public string CurrentTime { get; set; } = "";
-    public string Message { get; set; } = "";
+## Handlers
 
-    public void OnGet()
-    {
-        CurrentTime = DateTime.Now.ToString("HH:mm:ss");
-    }
-
-    public IActionResult OnPost()
-    {
-        if (string.IsNullOrWhiteSpace(Name))
-        {
-            Message = "Please enter a name";
-            return Page();
-        }
-
-        Message = $"Hello, {Name}!";
-        return Page();
-    }
-}
-```
-
-### Request Processing Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Routing
-    participant PageModel as Page Model
-    participant Binding as Model Binding
-    participant Handler as Handler Method
-    participant Filters as Page Filters
-    participant View as Razor View
-
-    Client->>Routing: GET /products/details?id=123
-    Routing->>PageModel: Create PageModel instance
-    PageModel->>Binding: Bind parameters
-
-    Note over Binding: Bind from:<br/>- Route data<br/>- Query string<br/>- Form data<br/>- Services
-
-    Binding->>Filters: Execute filters (OnPageHandlerExecuting)
-    Filters->>Handler: Call OnGet/OnPost
-    Handler->>Handler: Execute logic<br/>Load data
-    Handler->>Filters: Return IActionResult
-    Filters->>Filters: OnPageHandlerExecuted
-    Filters->>View: Render Razor view
-    View->>View: Execute Razor syntax<br/>Generate HTML
-    View->>Client: HTML Response
-```
-
-### Route Parameters
-
-```csharp
-// Pages/Products/Details.cshtml.cs
-@page "{id:int}"
-@model DetailsModel
-
-public class DetailsModel : PageModel
-{
-    private readonly IProductService _productService;
-
-    public DetailsModel(IProductService productService)
-    {
-        _productService = productService;
-    }
-
-    public Product? Product { get; set; }
-
-    public async Task<IActionResult> OnGetAsync(int id)
-    {
-        Product = await _productService.GetProductAsync(id);
-
-        if (Product == null)
-        {
-            return NotFound();
-        }
-
-        return Page();
-    }
-}
-```
-
-**URL:** `/products/details/123` → `id = 123`
-
-### Multiple Handlers
+Pages support multiple handlers:
 
 ```csharp
 public class ContactModel : PageModel
 {
     [BindProperty]
-    public ContactForm Form { get; set; } = new();
+    public string Email { get; set; } = "";
 
     public string Message { get; set; } = "";
 
-    // Default GET handler
+    // GET handler
     public void OnGet()
     {
     }
 
-    // Default POST handler
+    // POST handler (default)
     public IActionResult OnPost()
     {
-        if (!ModelState.IsValid)
+        if (string.IsNullOrWhiteSpace(Email))
         {
+            Message = "Email required";
             return Page();
         }
 
-        // Send email
-        Message = "Message sent!";
+        Message = "Form submitted!";
         return Page();
     }
 
     // Named handler: POST with ?handler=subscribe
     public IActionResult OnPostSubscribe(string email)
     {
-        // Subscribe to newsletter
         Message = $"Subscribed: {email}";
         return Page();
     }
-
-    // Named handler: POST with ?handler=unsubscribe
-    public IActionResult OnPostUnsubscribe(string email)
-    {
-        // Unsubscribe
-        Message = $"Unsubscribed: {email}";
-        return Page();
-    }
-}
-
-public class ContactForm
-{
-    [Required]
-    public string Name { get; set; } = "";
-
-    [Required, EmailAddress]
-    public string Email { get; set; } = "";
-
-    [Required]
-    public string Message { get; set; } = "";
 }
 ```
 
-**Usage in Razor:**
+**In the view:**
 ```cshtml
-@page
-@model ContactModel
-
-<!-- Default handler (OnPost) -->
+<!-- Default POST handler -->
 <form method="post">
-    <input asp-for="Form.Name" />
-    <input asp-for="Form.Email" />
-    <textarea asp-for="Form.Message"></textarea>
-    <button type="submit">Send</button>
+    <input asp-for="Email" />
+    <button type="submit">Submit</button>
 </form>
 
-<!-- Named handler (OnPostSubscribe) -->
+<!-- Named handler -->
 <form method="post" asp-page-handler="Subscribe">
-    <input type="email" name="email" />
+    <input name="email" />
     <button type="submit">Subscribe</button>
 </form>
-
-<!-- Named handler (OnPostUnsubscribe) -->
-<form method="post" asp-page-handler="Unsubscribe">
-    <input type="email" name="email" />
-    <button type="submit">Unsubscribe</button>
-</form>
 ```
 
-### Page Filters
+## When to Use Razor Pages
 
-```csharp
-// Global page filter
-public class LoggingPageFilter : IPageFilter
-{
-    private readonly ILogger<LoggingPageFilter> _logger;
+✅ **Page-focused apps** - Content sites, admin panels
+✅ **CRUD operations** - Forms, data entry
+✅ **Simpler than MVC** - Less ceremony, easier to understand
+✅ **Self-contained logic** - Each page owns its logic
 
-    public LoggingPageFilter(ILogger<LoggingPageFilter> logger)
-    {
-        _logger = logger;
-    }
+❌ **Complex routing** - Attribute routing is limited
+❌ **Reusable actions** - Hard to share logic between pages
+❌ **When you need MVC structure** - Large, complex apps
 
-    public void OnPageHandlerSelected(PageHandlerSelectedContext context)
-    {
-        _logger.LogInformation(
-            "Page handler selected: {HandlerMethod}",
-            context.HandlerMethod?.Name);
-    }
+# MVC - The Full-Featured Framework
 
-    public void OnPageHandlerExecuting(PageHandlerExecutingContext context)
-    {
-        _logger.LogInformation("Page handler executing");
-    }
-
-    public void OnPageHandlerExecuted(PageHandlerExecutedContext context)
-    {
-        _logger.LogInformation(
-            "Page handler executed, result: {Result}",
-            context.Result?.GetType().Name);
-    }
-}
-
-// Register globally
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddRazorPages(options =>
-{
-    options.Conventions.ConfigureFilter(new LoggingPageFilter(
-        LoggerFactory.Create(b => b.AddConsole()).CreateLogger<LoggingPageFilter>()
-    ));
-});
-
-var app = builder.Build();
-```
-
-## MVC: The Full-Featured Framework
-
-MVC (Model-View-Controller) provides a structured pattern for building complex applications with clear separation of concerns.
-
-### Structure
+MVC (Model-View-Controller) is the "traditional" way. More ceremony, more structure, more power.
 
 ```
 Controllers/
-  HomeController.cs
   ProductsController.cs
-  ApiController.cs
 Models/
   Product.cs
   CreateProductViewModel.cs
 Views/
-  Home/
-    Index.cshtml
-    About.cshtml
   Products/
-    List.cshtml
+    Index.cshtml
     Details.cshtml
+    Create.cshtml
   Shared/
     _Layout.cshtml
-    _ValidationScriptsPartial.cshtml
 ```
 
-### MVC Request Processing Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Routing
-    participant Controller as Controller Factory
-    participant Filters
-    participant ModelBinding as Model Binding
-    participant Action as Action Method
-    participant Result as Action Result
-    participant View
-
-    Client->>Routing: GET /products/details/123
-    Routing->>Controller: Create controller instance
-    Controller->>Filters: Authorization filters
-
-    alt Not authorized
-        Filters-->>Client: 401/403
-    end
-
-    Filters->>Filters: Resource filters
-    Filters->>ModelBinding: Bind parameters
-
-    Note over ModelBinding: Bind from:<br/>- Route values<br/>- Query string<br/>- Form data<br/>- Body<br/>- Services
-
-    ModelBinding->>Filters: Action filters (OnActionExecuting)
-    Filters->>Action: Invoke action method
-    Action->>Action: Execute business logic
-    Action->>Result: Return IActionResult
-    Result->>Filters: Action filters (OnActionExecuted)
-    Filters->>Filters: Result filters (OnResultExecuting)
-    Filters->>View: Execute result (render view)
-    View->>Filters: Result filters (OnResultExecuted)
-    Filters->>Filters: Resource filters (OnResourceExecuted)
-    Filters->>Client: HTML/JSON Response
-```
-
-### Basic Controller
-
+**ProductsController.cs:**
 ```csharp
+[Route("products")]
 public class ProductsController : Controller
 {
-    private readonly IProductService _productService;
-    private readonly ILogger<ProductsController> _logger;
+    private readonly IProductService _service;
 
-    public ProductsController(
-        IProductService productService,
-        ILogger<ProductsController> logger)
+    public ProductsController(IProductService service)
     {
-        _productService = productService;
-        _logger = logger;
+        _service = service;
     }
 
     // GET: /products
+    [HttpGet]
     public async Task<IActionResult> Index()
     {
-        var products = await _productService.GetAllProductsAsync();
+        var products = await _service.GetAllAsync();
         return View(products);
     }
 
-    // GET: /products/details/5
+    // GET: /products/123
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> Details(int id)
     {
-        var product = await _productService.GetProductAsync(id);
+        var product = await _service.GetByIdAsync(id);
 
         if (product == null)
-        {
             return NotFound();
-        }
 
         return View(product);
     }
 
     // GET: /products/create
+    [HttpGet("create")]
     public IActionResult Create()
     {
         return View();
     }
 
     // POST: /products/create
-    [HttpPost]
+    [HttpPost("create")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateProductViewModel model)
     {
         if (!ModelState.IsValid)
-        {
             return View(model);
-        }
 
-        var product = await _productService.CreateProductAsync(model);
+        var product = await _service.CreateAsync(model);
 
         return RedirectToAction(nameof(Details), new { id = product.Id });
-    }
-
-    // DELETE: /products/delete/5
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(int id)
-    {
-        await _productService.DeleteProductAsync(id);
-
-        return RedirectToAction(nameof(Index));
     }
 }
 ```
 
-### Action Results
+More code, but also more structure.
+
+## Action Results
+
+MVC has LOTS of result types:
 
 ```csharp
 public class ResultsController : Controller
 {
-    // View result
-    public IActionResult Index()
-    {
-        return View(); // Views/Results/Index.cshtml
-    }
+    // View
+    public IActionResult Index() => View();
 
     // View with model
-    public IActionResult Details(int id)
-    {
-        var model = new Product { Id = id, Name = "Product" };
-        return View(model);
-    }
+    public IActionResult Details(int id) => View(new Product { Id = id });
 
-    // Specific view
-    public IActionResult Custom()
-    {
-        return View("CustomViewName");
-    }
-
-    // JSON result
-    public IActionResult GetJson()
-    {
-        return Json(new { id = 1, name = "Product" });
-    }
+    // JSON
+    public IActionResult GetJson() => Json(new { id = 1, name = "Product" });
 
     // Redirect
-    public IActionResult RedirectSample()
-    {
-        return RedirectToAction("Index", "Home");
-    }
+    public IActionResult GoHome() => RedirectToAction("Index", "Home");
 
-    // Redirect to route
-    public IActionResult RedirectToRouteSample()
-    {
-        return RedirectToRoute("Default", new { controller = "Home", action = "Index" });
-    }
+    // File download
+    public IActionResult Download() => File(bytes, "application/pdf", "file.pdf");
 
-    // Content result
-    public IActionResult GetText()
-    {
-        return Content("Plain text response", "text/plain");
-    }
+    // Status codes
+    public IActionResult NotFoundExample() => NotFound();
+    public IActionResult BadRequestExample() => BadRequest("Invalid input");
+    public IActionResult UnauthorizedExample() => Unauthorized();
 
-    // File result
-    public IActionResult DownloadFile()
-    {
-        var bytes = System.IO.File.ReadAllBytes("file.pdf");
-        return File(bytes, "application/pdf", "download.pdf");
-    }
-
-    // Status code result
-    public IActionResult StatusCodeSample()
-    {
-        return StatusCode(503); // Service Unavailable
-    }
-
-    // Not found
-    public IActionResult NotFoundSample()
-    {
-        return NotFound(); // 404
-    }
-
-    // Bad request
-    public IActionResult BadRequestSample()
-    {
-        return BadRequest("Invalid input"); // 400
-    }
-
-    // Unauthorized
-    public IActionResult UnauthorizedSample()
-    {
-        return Unauthorized(); // 401
-    }
+    // Content
+    public IActionResult GetText() => Content("Plain text", "text/plain");
 }
 ```
 
-### Model Binding
+## Filters
 
-```csharp
-public class BindingController : Controller
-{
-    // Simple parameter from route
-    // Route: products/{id}
-    public IActionResult Get(int id)
-    {
-        return Ok(new { id });
-    }
-
-    // Multiple parameters from route and query
-    // Route: products/{id}?includeDetails=true
-    public IActionResult GetWithDetails(int id, bool includeDetails = false)
-    {
-        return Ok(new { id, includeDetails });
-    }
-
-    // Complex type from form
-    [HttpPost]
-    public IActionResult CreateFromForm([FromForm] Product product)
-    {
-        return Ok(product);
-    }
-
-    // Complex type from body (JSON)
-    [HttpPost]
-    public IActionResult CreateFromBody([FromBody] Product product)
-    {
-        return Ok(product);
-    }
-
-    // From header
-    public IActionResult HeaderSample([FromHeader(Name = "X-API-Key")] string apiKey)
-    {
-        return Ok(new { apiKey });
-    }
-
-    // From services
-    public IActionResult ServiceSample([FromServices] IProductService productService)
-    {
-        var count = productService.GetCount();
-        return Ok(new { count });
-    }
-
-    // Custom binding
-    public IActionResult CustomBinding([ModelBinder(typeof(CustomBinder))] CustomModel model)
-    {
-        return Ok(model);
-    }
-}
-
-// Custom model binder
-public class CustomBinder : IModelBinder
-{
-    public Task BindModelAsync(ModelBindingContext bindingContext)
-    {
-        var value = bindingContext.ValueProvider.GetValue("custom").FirstValue;
-
-        var model = new CustomModel { Value = value?.ToUpper() ?? "" };
-
-        bindingContext.Result = ModelBindingResult.Success(model);
-
-        return Task.CompletedTask;
-    }
-}
-
-public class CustomModel
-{
-    public string Value { get; set; } = "";
-}
-```
-
-### Action Filters
-
-Filters execute code at different points in the request pipeline:
+MVC has a FULL filter pipeline:
 
 ```mermaid
-graph TD
-    A[Request] --> B[Authorization Filters]
-    B --> C{Authorized?}
-    C -->|No| D[Challenge Result]
-    C -->|Yes| E[Resource Filters<br/>OnResourceExecuting]
-    E --> F[Model Binding]
-    F --> G[Action Filters<br/>OnActionExecuting]
-    G --> H[Action Method]
-    H --> I[Action Filters<br/>OnActionExecuted]
-    I --> J[Exception Filters<br/>if exception]
-    J --> K[Result Filters<br/>OnResultExecuting]
-    K --> L[Action Result]
-    L --> M[Result Filters<br/>OnResultExecuted]
-    M --> N[Resource Filters<br/>OnResourceExecuted]
-    N --> O[Response]
-    D --> O
+sequenceDiagram
+    participant Request
+    participant Auth as Authorization Filters
+    participant Resource as Resource Filters
+    participant Action as Action Filters
+    participant Method as Action Method
+    participant Result as Result Filters
+    participant Response
 
-    style H fill:#ffe1e1
-    style L fill:#e1ffe1
+    Request->>Auth: Check authorization
+    Auth->>Resource: OnResourceExecuting
+    Resource->>Action: OnActionExecuting
+    Action->>Method: Execute action
+    Method->>Action: OnActionExecuted
+    Action->>Result: OnResultExecuting
+    Result->>Result: Execute result
+    Result->>Resource: OnResultExecuted
+    Resource->>Response: OnResourceExecuted
 ```
 
-**Filter types:**
-
 ```csharp
+// Filter types in order of execution
+
 // 1. Authorization filter
-public class CustomAuthorizeFilter : IAuthorizationFilter
+public class CustomAuthorizeAttribute : Attribute, IAuthorizationFilter
 {
     public void OnAuthorization(AuthorizationFilterContext context)
     {
@@ -927,276 +395,113 @@ public class CustomAuthorizeFilter : IAuthorizationFilter
     }
 }
 
-// 2. Resource filter
-public class CacheResourceFilter : IResourceFilter
-{
-    private static readonly Dictionary<string, object> _cache = new();
-
-    public void OnResourceExecuting(ResourceExecutingContext context)
-    {
-        var cacheKey = context.HttpContext.Request.Path;
-
-        if (_cache.TryGetValue(cacheKey, out var cachedResult))
-        {
-            context.Result = (IActionResult)cachedResult;
-            // Short-circuit the pipeline
-        }
-    }
-
-    public void OnResourceExecuted(ResourceExecutedContext context)
-    {
-        var cacheKey = context.HttpContext.Request.Path;
-
-        if (context.Result != null)
-        {
-            _cache[cacheKey] = context.Result;
-        }
-    }
-}
-
-// 3. Action filter
+// 2. Action filter
 public class LogActionFilter : IActionFilter
 {
-    private readonly ILogger<LogActionFilter> _logger;
-
-    public LogActionFilter(ILogger<LogActionFilter> logger)
-    {
-        _logger = logger;
-    }
-
     public void OnActionExecuting(ActionExecutingContext context)
     {
-        _logger.LogInformation(
-            "Executing action {Action} with arguments: {Arguments}",
-            context.ActionDescriptor.DisplayName,
-            string.Join(", ", context.ActionArguments.Select(kvp => $"{kvp.Key}={kvp.Value}")));
+        // Before action executes
+        Console.WriteLine($"Executing {context.ActionDescriptor.DisplayName}");
     }
 
     public void OnActionExecuted(ActionExecutedContext context)
     {
-        _logger.LogInformation(
-            "Executed action {Action}, result: {Result}",
-            context.ActionDescriptor.DisplayName,
-            context.Result?.GetType().Name);
+        // After action executes
+        Console.WriteLine($"Executed with result: {context.Result?.GetType().Name}");
     }
 }
 
-// 4. Exception filter
-public class CustomExceptionFilter : IExceptionFilter
-{
-    public void OnException(ExceptionContext context)
-    {
-        if (context.Exception is ArgumentException)
-        {
-            context.Result = new BadRequestObjectResult(new
-            {
-                error = context.Exception.Message
-            });
-
-            context.ExceptionHandled = true;
-        }
-    }
-}
-
-// 5. Result filter
-public class HeaderResultFilter : IResultFilter
+// 3. Result filter
+public class AddHeaderFilter : IResultFilter
 {
     public void OnResultExecuting(ResultExecutingContext context)
     {
-        context.HttpContext.Response.Headers["X-Custom-Header"] = "Value";
+        context.HttpContext.Response.Headers["X-Custom"] = "Value";
     }
 
     public void OnResultExecuted(ResultExecutedContext context)
     {
-        // After result execution
+        // After result executes
     }
 }
 
-// Register filters
-var builder = WebApplication.CreateBuilder(args);
-
+// Apply globally
 builder.Services.AddControllersWithViews(options =>
 {
-    // Global filters
     options.Filters.Add<LogActionFilter>();
-    options.Filters.Add<CustomExceptionFilter>();
 });
 
-// Or apply to specific controllers/actions
+// Or per controller/action
 [ServiceFilter(typeof(LogActionFilter))]
 public class ProductsController : Controller
 {
-    [TypeFilter(typeof(CacheResourceFilter))]
-    public IActionResult Index()
-    {
-        return View();
-    }
 }
 ```
 
-### API Controllers
+## When to Use MVC
 
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-public class ProductsApiController : ControllerBase
-{
-    private readonly IProductService _productService;
+✅ **Complex applications** - Large codebases, multiple teams
+✅ **Reusable logic** - Filters, action methods shared across controllers
+✅ **Convention over configuration** - You want structure
+✅ **API + Views** - Need both
 
-    public ProductsApiController(IProductService productService)
-    {
-        _productService = productService;
-    }
+❌ **Simple APIs** - Too much ceremony
+❌ **Learning ASP.NET** - Start with Minimal APIs
+❌ **Microservices** - Overkill
 
-    // GET: api/products
-    [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<Product>), 200)]
-    public async Task<ActionResult<IEnumerable<Product>>> GetProducts()
-    {
-        var products = await _productService.GetAllProductsAsync();
-        return Ok(products);
-    }
-
-    // GET: api/products/5
-    [HttpGet("{id}")]
-    [ProducesResponseType(typeof(Product), 200)]
-    [ProducesResponseType(404)]
-    public async Task<ActionResult<Product>> GetProduct(int id)
-    {
-        var product = await _productService.GetProductAsync(id);
-
-        if (product == null)
-        {
-            return NotFound();
-        }
-
-        return Ok(product);
-    }
-
-    // POST: api/products
-    [HttpPost]
-    [ProducesResponseType(typeof(Product), 201)]
-    [ProducesResponseType(400)]
-    public async Task<ActionResult<Product>> CreateProduct(CreateProductDto dto)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState);
-        }
-
-        var product = await _productService.CreateProductAsync(dto);
-
-        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
-    }
-
-    // PUT: api/products/5
-    [HttpPut("{id}")]
-    [ProducesResponseType(204)]
-    [ProducesResponseType(400)]
-    [ProducesResponseType(404)]
-    public async Task<IActionResult> UpdateProduct(int id, UpdateProductDto dto)
-    {
-        if (id != dto.Id)
-        {
-            return BadRequest();
-        }
-
-        var exists = await _productService.ExistsAsync(id);
-        if (!exists)
-        {
-            return NotFound();
-        }
-
-        await _productService.UpdateProductAsync(dto);
-
-        return NoContent();
-    }
-
-    // DELETE: api/products/5
-    [HttpDelete("{id}")]
-    [ProducesResponseType(204)]
-    [ProducesResponseType(404)]
-    public async Task<IActionResult> DeleteProduct(int id)
-    {
-        var exists = await _productService.ExistsAsync(id);
-        if (!exists)
-        {
-            return NotFound();
-        }
-
-        await _productService.DeleteProductAsync(id);
-
-        return NoContent();
-    }
-}
-```
-
-## Comparing the Three Models
-
-```mermaid
-graph TB
-    subgraph "Minimal APIs"
-        MA1[Direct Route Registration]
-        MA2[Lambda Handlers]
-        MA3[Endpoint Filters]
-        MA4[Simple Binding]
-
-        MA1 --> MA2
-        MA2 --> MA3
-        MA3 --> MA4
-    end
-
-    subgraph "Razor Pages"
-        RP1[Page-Based Routing]
-        RP2[PageModel Handlers]
-        RP3[Page Filters]
-        RP4[Razor View Engine]
-
-        RP1 --> RP2
-        RP2 --> RP3
-        RP3 --> RP4
-    end
-
-    subgraph "MVC"
-        MVC1[Controller-Based Routing]
-        MVC2[Action Methods]
-        MVC3[Multiple Filter Types]
-        MVC4[View/JSON Results]
-
-        MVC1 --> MVC2
-        MVC2 --> MVC3
-        MVC3 --> MVC4
-    end
-
-    style MA1 fill:#e1ffe1
-    style RP1 fill:#ffe1e1
-    style MVC1 fill:#e1e1ff
-```
+# Comparing the Three
 
 | Feature | Minimal APIs | Razor Pages | MVC |
 |---------|--------------|-------------|-----|
 | **Complexity** | Low | Medium | High |
-| **Boilerplate** | Minimal | Moderate | Significant |
-| **Best for** | APIs, microservices | Page-focused web apps | Complex applications |
-| **Routing** | Inline | Convention + attributes | Convention + attributes |
-| **Separation of concerns** | Low | Medium | High |
-| **Testability** | Good | Good | Excellent |
+| **Ceremony** | Minimal | Some | Lots |
+| **Best for** | APIs | Web UI | Complex apps |
+| **Routing** | Inline | Convention | Convention + Attributes |
+| **Structure** | Loose | Page-focused | MVC pattern |
+| **Learning curve** | Easy | Easy | Moderate |
 | **Performance** | Fastest | Fast | Fast |
-| **Learning curve** | Easiest | Easy | Moderate |
 
-## Key Takeaways
+## Can You Mix Them?
 
-- **Minimal APIs** provide a lightweight, low-ceremony way to build HTTP APIs
-- **Razor Pages** simplify page-focused web development with a page-centric model
-- **MVC** offers full-featured framework with clear separation of concerns
-- All three models use the same underlying routing and endpoint infrastructure
-- Parameter binding works similarly across all models
-- Filters provide cross-cutting concerns at different pipeline stages
-- Choose the model based on your application's complexity and requirements
-- You can mix models in the same application
+YES. They all use the same pipeline:
 
-Each programming model provides a different developer experience while leveraging the same powerful ASP.NET Core pipeline. Understanding all three helps you choose the right tool for each scenario.
+```csharp
+var builder = WebApplication.CreateBuilder(args);
 
----
+// Add all three
+builder.Services.AddControllers();  // MVC API controllers
+builder.Services.AddRazorPages();   // Razor Pages
 
-*Continue to Part 6: Advanced Pipeline Hooks and Extensibility to learn about advanced extension points and customization techniques.*
+var app = builder.Build();
+
+app.UseRouting();
+app.UseAuthorization();
+
+// Minimal APIs
+app.MapGet("/api/health", () => "Healthy");
+
+// MVC Controllers
+app.MapControllers();
+
+// Razor Pages
+app.MapRazorPages();
+
+app.Run();
+```
+
+They coexist happily. Use the right tool for each part of your app.
+
+# In Conclusion
+
+All three models are just different ways to define endpoints in the pipeline. They compile to the SAME thing.
+
+**Choose based on what you're building:**
+- **Minimal APIs**: Small services, quick APIs, learning
+- **Razor Pages**: Web apps, forms, CRUD
+- **MVC**: Complex apps, large teams, reusable logic
+
+Don't overthink it. And remember - you can mix them.
+
+In Part 6 we'll cover advanced topics like `IStartupFilter`, `IHostedService`, and other hooks into the pipeline.
+
+Now go pick the right tool and stop worrying about whether it's "modern" enough!
