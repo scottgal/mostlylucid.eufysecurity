@@ -61,6 +61,10 @@
 
     <!-- Async utilities -->
     <PackageReference Include="Nito.AsyncEx" Version="5.1.2" />
+
+    <!-- OpenTelemetry -->
+    <PackageReference Include="OpenTelemetry.Api" Version="1.9.0" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

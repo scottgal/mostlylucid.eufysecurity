@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,6 +11,7 @@ using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
 using MostlyLucid.EufySecurity.Common;
+using MostlyLucid.EufySecurity.Telemetry;
 using Microsoft.Extensions.Logging;
 
 namespace MostlyLucid.EufySecurity.Http;
@@ -170,9 +172,13 @@ public class HttpApiClient : IDisposable
         CaptchaInfo? captchaInfo = null,
         CancellationToken cancellationToken = default)
     {
+        using var activity = EufySecurityInstrumentation.ActivitySource.StartActivity("eufy.authenticate");
+        var sw = Stopwatch.StartNew();
+
         try
         {
             _logger?.LogInformation("Authenticating with Eufy cloud...");
+            activity?.SetTag(EufySecurityInstrumentation.Tags.Requires2FA, !string.IsNullOrEmpty(verifyCode));
 
             if (_publicKey == null || _privateKey == null)
             {
@@ -226,7 +232,7 @@ public class HttpApiClient : IDisposable
             var response = await _httpClient.SendAsync(request, cancellationToken);
 
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger?.LogDebug("Login response: {Response}", responseText);
+            _logger?.LogDebug("Login response received (status: {StatusCode})", response.StatusCode);
 
             var result = JsonSerializer.Deserialize<LoginSecResponse>(responseText);
 
@@ -258,6 +264,20 @@ public class HttpApiClient : IDisposable
                         _logger?.LogInformation("Authentication successful");
                         ConnectionStateChanged?.Invoke(this, true);
 
+                        // Record telemetry
+                        EufySecurityInstrumentation.AuthenticationAttempts.Add(1,
+                            new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Result, EufySecurityInstrumentation.Values.Success),
+                            new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Requires2FA, !string.IsNullOrEmpty(verifyCode)));
+                        EufySecurityInstrumentation.AuthenticationDuration.Record(sw.Elapsed.TotalMilliseconds,
+                            new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Requires2FA, !string.IsNullOrEmpty(verifyCode)));
+                        EufySecurityInstrumentation.SetAuthenticationStatus(true);
+                        if (_tokenExpiration.HasValue)
+                        {
+                            var secondsUntilExpiry = (long)(_tokenExpiration.Value - DateTime.UtcNow).TotalSeconds;
+                            EufySecurityInstrumentation.SetTokenExpirationSeconds(secondsUntilExpiry);
+                        }
+                        activity?.SetStatus(ActivityStatusCode.Ok);
+
                         return new AuthenticationResult { Success = true };
                     }
                     break;
@@ -278,6 +298,12 @@ public class HttpApiClient : IDisposable
                     // Raise event to notify caller
                     TwoFactorAuthRequired?.Invoke(this, new TwoFactorAuthRequestEventArgs());
 
+                    // Record 2FA required
+                    EufySecurityInstrumentation.AuthenticationAttempts.Add(1,
+                        new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Result, "2fa_required"),
+                        new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Requires2FA, true));
+                    activity?.SetTag(EufySecurityInstrumentation.Tags.Result, "2fa_required");
+
                     return new AuthenticationResult
                     {
                         Success = false,
@@ -287,6 +313,15 @@ public class HttpApiClient : IDisposable
 
                 default:
                     _logger?.LogError("Authentication failed with code {Code}: {Message}", result.Code, result.Msg);
+
+                    // Record failure
+                    EufySecurityInstrumentation.AuthenticationAttempts.Add(1,
+                        new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Result, EufySecurityInstrumentation.Values.Failure),
+                        new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Requires2FA, !string.IsNullOrEmpty(verifyCode)));
+                    EufySecurityInstrumentation.AuthenticationFailures.Add(1,
+                        new KeyValuePair<string, object?>("reason", "invalid_credentials"));
+                    activity?.SetStatus(ActivityStatusCode.Error, result.Msg ?? "Authentication failed");
+
                     return new AuthenticationResult
                     {
                         Success = false,
@@ -294,11 +329,26 @@ public class HttpApiClient : IDisposable
                     };
             }
 
+            // Unknown error
+            EufySecurityInstrumentation.AuthenticationFailures.Add(1,
+                new KeyValuePair<string, object?>("reason", "unknown_error"));
+            activity?.SetStatus(ActivityStatusCode.Error, "Unknown authentication error");
+
             return new AuthenticationResult { Success = false, Message = "Unknown authentication error" };
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Authentication error");
+
+            // Record exception
+            EufySecurityInstrumentation.AuthenticationFailures.Add(1,
+                new KeyValuePair<string, object?>("reason", "exception"));
+            EufySecurityInstrumentation.Errors.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.ErrorType, ex.GetType().Name),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Operation, "authenticate"));
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
+
             return new AuthenticationResult { Success = false, Message = $"Exception: {ex.Message}" };
         }
     }
@@ -333,12 +383,12 @@ public class HttpApiClient : IDisposable
             if (response.IsSuccessStatusCode)
             {
                 _logger?.LogInformation("Verification code sent to email");
-                _logger?.LogDebug("SendVerifyCode response: {Response}", responseText);
+                _logger?.LogDebug("SendVerifyCode response received (status: {StatusCode})", response.StatusCode);
             }
             else
             {
-                _logger?.LogWarning("Failed to send verification code. Status: {Status}, Response: {Response}",
-                    response.StatusCode, responseText);
+                _logger?.LogWarning("Failed to send verification code. Status: {Status}",
+                    response.StatusCode);
             }
         }
         catch (Exception ex)
@@ -352,10 +402,16 @@ public class HttpApiClient : IDisposable
     /// </summary>
     public async Task<List<Dictionary<string, object>>> GetStationsAsync(CancellationToken cancellationToken = default)
     {
+        using var activity = EufySecurityInstrumentation.ActivitySource.StartActivity("eufy.http.get_stations");
+        var sw = Stopwatch.StartNew();
+
         EnsureAuthenticated();
 
         try
         {
+            activity?.SetTag(EufySecurityInstrumentation.Tags.Endpoint, "/v1/app/get_devs_list");
+            activity?.SetTag(EufySecurityInstrumentation.Tags.Method, "GET");
+
             using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/app/get_devs_list");
             if (!string.IsNullOrEmpty(_token))
             {
@@ -366,11 +422,32 @@ public class HttpApiClient : IDisposable
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<StationListResponse>(cancellationToken);
-            return result?.Data ?? new List<Dictionary<string, object>>();
+            var data = result?.Data ?? new List<Dictionary<string, object>>();
+
+            // Record telemetry
+            EufySecurityInstrumentation.HttpApiCalls.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_stations"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Method, "GET"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.StatusCode, (int)response.StatusCode));
+            EufySecurityInstrumentation.HttpApiDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_stations"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Method, "GET"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.StatusCode, (int)response.StatusCode));
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return data;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to get stations");
+
+            // Record error
+            EufySecurityInstrumentation.HttpApiErrors.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_stations"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.ErrorType, ex.GetType().Name));
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
+
             throw new ApiException("Failed to retrieve stations", ex);
         }
     }
@@ -380,10 +457,16 @@ public class HttpApiClient : IDisposable
     /// </summary>
     public async Task<List<Dictionary<string, object>>> GetDevicesAsync(CancellationToken cancellationToken = default)
     {
+        using var activity = EufySecurityInstrumentation.ActivitySource.StartActivity("eufy.http.get_devices");
+        var sw = Stopwatch.StartNew();
+
         EnsureAuthenticated();
 
         try
         {
+            activity?.SetTag(EufySecurityInstrumentation.Tags.Endpoint, "/v1/app/get_devs_list");
+            activity?.SetTag(EufySecurityInstrumentation.Tags.Method, "GET");
+
             using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/app/get_devs_list");
             if (!string.IsNullOrEmpty(_token))
             {
@@ -394,11 +477,32 @@ public class HttpApiClient : IDisposable
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<DeviceListResponse>(cancellationToken);
-            return result?.Data ?? new List<Dictionary<string, object>>();
+            var data = result?.Data ?? new List<Dictionary<string, object>>();
+
+            // Record telemetry
+            EufySecurityInstrumentation.HttpApiCalls.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_devices"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Method, "GET"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.StatusCode, (int)response.StatusCode));
+            EufySecurityInstrumentation.HttpApiDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_devices"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Method, "GET"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.StatusCode, (int)response.StatusCode));
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return data;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to get devices");
+
+            // Record error
+            EufySecurityInstrumentation.HttpApiErrors.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Endpoint, "get_devices"),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.ErrorType, ex.GetType().Name));
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
+
             throw new ApiException("Failed to retrieve devices", ex);
         }
     }

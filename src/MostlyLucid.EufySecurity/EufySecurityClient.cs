@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using MostlyLucid.EufySecurity.Common;
 using MostlyLucid.EufySecurity.Devices;
 using MostlyLucid.EufySecurity.Events;
@@ -6,6 +7,7 @@ using MostlyLucid.EufySecurity.Http;
 using MostlyLucid.EufySecurity.P2P;
 using MostlyLucid.EufySecurity.Push;
 using MostlyLucid.EufySecurity.Stations;
+using MostlyLucid.EufySecurity.Telemetry;
 using Microsoft.Extensions.Logging;
 
 namespace MostlyLucid.EufySecurity;
@@ -154,6 +156,9 @@ public class EufySecurityClient : IDisposable
     /// </summary>
     public async Task RefreshDevicesAsync(CancellationToken cancellationToken = default)
     {
+        using var activity = EufySecurityInstrumentation.ActivitySource.StartActivity("eufy.devices.refresh");
+        var sw = Stopwatch.StartNew();
+
         try
         {
             _logger?.LogDebug("Refreshing device list...");
@@ -211,10 +216,29 @@ public class EufySecurityClient : IDisposable
             }
 
             _logger?.LogDebug("Device list refreshed");
+
+            // Update telemetry gauges
+            EufySecurityInstrumentation.SetStationsCount(_stations.Count);
+            EufySecurityInstrumentation.SetConnectedDevicesCount(_devices.Count);
+            EufySecurityInstrumentation.DeviceRefreshes.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Trigger, EufySecurityInstrumentation.Values.Manual));
+            EufySecurityInstrumentation.DeviceRefreshDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("device_count", _devices.Count));
+            activity?.SetTag("station.count", _stations.Count);
+            activity?.SetTag("device.count", _devices.Count);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to refresh device list");
+
+            // Record error
+            EufySecurityInstrumentation.Errors.Add(1,
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.ErrorType, ex.GetType().Name),
+                new KeyValuePair<string, object?>(EufySecurityInstrumentation.Tags.Operation, "refresh_devices"));
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
+
             throw;
         }
     }
